@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>PayGlocal Lead Tracker</title>
+<style>
+:root{--blue:#2563eb;--blue2:#4f8df7;--ink:#111827;--muted:#6b7280;--line:#e7ebf2;--bg:#f7f9fc;--card:#fff;--green:#138a58;--amber:#a86b00;--red:#c43d3d}
+*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+button,input,select,textarea{font:inherit}button{cursor:pointer}
+.app{min-height:100vh}.topbar{height:72px;background:#fff;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;padding:0 34px;position:sticky;top:0;z-index:30}
+.brand{display:flex;align-items:center;gap:11px;font-size:19px;font-weight:750}.mark{width:30px;height:30px;border:3px solid var(--blue);border-radius:9px;position:relative}.mark:after{content:"";position:absolute;width:9px;height:9px;border-left:3px solid var(--blue);border-bottom:3px solid var(--blue);transform:rotate(45deg);left:7px;top:6px}
+.top-actions{display:flex;gap:10px;align-items:center}.btn{border:1px solid var(--line);background:#fff;border-radius:11px;padding:10px 15px;font-weight:650;color:#263041;transition:.18s ease;box-shadow:0 1px 2px #00000008}.btn:hover{transform:translateY(-1px);box-shadow:0 5px 15px #1d4ed812}.btn.primary{background:linear-gradient(135deg,#3b82f6,#2563eb);border-color:#2563eb;color:#fff}.btn.ghost{background:#f8fafc}.btn.small{padding:7px 10px;font-size:12px}
+.main{max-width:1440px;margin:auto;padding:28px 34px 60px}.hero{display:flex;justify-content:space-between;align-items:flex-end;margin:4px 0 24px}.eyebrow{font-size:11px;text-transform:uppercase;letter-spacing:.11em;color:#718096;font-weight:750}.hero h1{margin:5px 0 5px;font-size:30px;letter-spacing:-.035em}.hero p{margin:0;color:var(--muted)}.status{display:flex;align-items:center;gap:9px;color:#687386;font-size:12px}.dot{width:7px;height:7px;background:#23a36d;border-radius:50%;box-shadow:0 0 0 4px #23a36d18}
+.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:18px}.kpi{background:var(--card);border:1px solid var(--line);border-radius:15px;padding:17px 18px;box-shadow:0 3px 14px #1d355708}.kpi .label{color:#737d8c;font-size:12px}.kpi .value{font-size:24px;font-weight:780;margin-top:3px;letter-spacing:-.02em}.kpi .sub{font-size:11px;color:#8a94a4;margin-top:2px}
+.toolbar{background:#fff;border:1px solid var(--line);border-radius:15px;padding:12px;display:flex;gap:9px;align-items:center;flex-wrap:wrap;margin-bottom:14px;box-shadow:0 3px 14px #1d355708}.field{position:relative}.field input,.field select{height:38px;border:1px solid #dfe5ee;background:#fff;border-radius:9px;padding:0 11px;color:#303846;outline:none;min-width:150px}.field input:focus,.field select:focus{border-color:#7ba6fa;box-shadow:0 0 0 3px #3b82f614}.search{min-width:270px!important}.range{display:flex;align-items:center;gap:7px;padding:0 5px;color:#697384;font-size:12px}.range input{min-width:110px}.toolbar-spacer{flex:1}.count{font-size:12px;color:#737d8c;padding:0 5px}
+.layout{display:grid;grid-template-columns:1fr 330px;gap:16px}.list{display:flex;flex-direction:column;gap:10px}.lead{background:#fff;border:1px solid var(--line);border-radius:15px;padding:16px 17px;transition:.18s ease;box-shadow:0 3px 14px #1d355706}.lead:hover{border-color:#cbdaf7;box-shadow:0 8px 25px #1d35570c;transform:translateY(-1px)}.lead-top{display:flex;align-items:flex-start;gap:14px}.avatar{width:40px;height:40px;border-radius:11px;background:#eef4ff;color:#2868df;display:grid;place-items:center;font-weight:800;flex:none}.lead-main{flex:1;min-width:0}.name-row{display:flex;align-items:center;gap:9px}.name{font-weight:760;font-size:16px}.sector{font-size:11px;background:#f2f4f8;color:#677181;border-radius:999px;padding:3px 7px}.score{margin-left:auto;border-radius:9px;padding:5px 8px;font-weight:800;font-size:12px}.high{background:#e8f7f0;color:#118154}.mid{background:#fff5df;color:#996300}.low{background:#fdecec;color:#b83a3a}.funding{color:#4c5666;margin-top:2px}.reason{color:#5e6878;margin:9px 0 10px}.signals{display:flex;flex-wrap:wrap;gap:5px}.tag{font-size:11px;border:1px solid #dce5f5;color:#45618d;background:#f7faff;border-radius:999px;padding:4px 7px}.lead-foot{display:flex;align-items:center;justify-content:space-between;margin-top:13px;padding-top:11px;border-top:1px solid #eef1f5;color:#8a93a1;font-size:11px}.links{display:flex;gap:10px}.links a{color:#2563eb;text-decoration:none;font-weight:650}.links a:hover{text-decoration:underline}
+.side{background:#fff;border:1px solid var(--line);border-radius:15px;padding:17px;height:max-content;position:sticky;top:88px}.side h3{margin:0;font-size:15px}.side-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}.config-section{border-top:1px solid #edf0f4;padding:14px 0}.config-section:first-of-type{border-top:0;padding-top:0}.config-title{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:#7a8493;font-weight:750;margin-bottom:9px}.weight{display:grid;grid-template-columns:1fr 70px;align-items:center;gap:8px;margin:7px 0}.weight span{font-size:12px;color:#505a69}.weight input{width:70px;height:32px;border:1px solid #dfe5ee;border-radius:8px;padding:0 8px}.chips{display:flex;flex-wrap:wrap;gap:5px}.chip{background:#f5f7fa;border:1px solid #e6eaf0;border-radius:999px;padding:4px 7px;font-size:10px;color:#667080}.source-row{display:flex;justify-content:space-between;align-items:center;padding:5px 0;font-size:12px}.switch{width:34px;height:20px;background:#dce2ea;border-radius:999px;padding:2px;transition:.2s}.switch i{display:block;width:16px;height:16px;background:#fff;border-radius:50%;box-shadow:0 1px 3px #0002;transition:.2s}.switch.on{background:#3b82f6}.switch.on i{transform:translateX(14px)}
+.empty{background:#fff;border:1px dashed #ccd5e2;border-radius:15px;padding:55px 25px;text-align:center;color:#778294}.empty strong{display:block;color:#364152;margin-bottom:5px}.toast{position:fixed;right:22px;bottom:22px;background:#172033;color:#fff;padding:11px 14px;border-radius:10px;box-shadow:0 12px 35px #0003;opacity:0;transform:translateY(8px);pointer-events:none;transition:.2s;z-index:80}.toast.show{opacity:1;transform:none}.modal-wrap{position:fixed;inset:0;background:#11182755;display:none;align-items:center;justify-content:center;z-index:70;padding:20px}.modal-wrap.open{display:flex}.modal{width:min(700px,100%);max-height:85vh;overflow:auto;background:#fff;border-radius:17px;padding:20px;box-shadow:0 30px 80px #0003}.modal h2{margin:0 0 4px}.modal p{color:#697384;margin:0 0 15px}.modal textarea{width:100%;min-height:300px;border:1px solid #dce3ec;border-radius:10px;padding:12px;font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace}.modal-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:12px}
+.scan{display:inline-flex;align-items:center;gap:7px}.spinner{width:12px;height:12px;border:2px solid #ffffff66;border-top-color:#fff;border-radius:50%;display:none;animation:spin .7s linear infinite}.scanning .spinner{display:block}@keyframes spin{to{transform:rotate(360deg)}}@media(max-width:980px){.layout{grid-template-columns:1fr}.side{position:static}.kpis{grid-template-columns:repeat(2,1fr)}}@media(max-width:620px){.topbar{padding:0 16px}.main{padding:20px 14px}.top-actions .btn:not(.primary){display:none}.hero{align-items:flex-start;flex-direction:column;gap:10px}.kpis{grid-template-columns:1fr 1fr}.search{min-width:100%!important}.toolbar-spacer{display:none}.field,.field select{width:100%}.field input{width:100%}}
+</style>
+</head>
+<body>
+<div class="app">
+<header class="topbar">
+  <div class="brand"><span class="mark"></span><span>PayGlocal</span><span style="color:#a1a9b5;font-weight:500">/ Lead Tracker</span></div>
+  <div class="top-actions">
+    <button class="btn ghost" id="configBtn">Config</button>
+    <button class="btn ghost" id="importBtn">Import JSON</button>
+    <button class="btn primary scan" id="scanBtn"><span class="spinner"></span><span class="scanText">Run New Scan</span></button>
+    <input id="fileInput" type="file" accept=".json,application/json" hidden>
+  </div>
+</header>
+<main class="main">
+  <section class="hero">
+    <div><div class="eyebrow">Sales intelligence</div><h1>High-signal cross-border leads</h1><p>Funding + international intent, ranked for PayGlocal outreach.</p></div>
+    <div class="status"><span class="dot"></span><span id="refreshText">Local workspace</span></div>
+  </section>
+
+  <section class="kpis">
+    <div class="kpi"><div class="label">Qualified leads</div><div class="value" id="kpiQualified">0</div><div class="sub">above current threshold</div></div>
+    <div class="kpi"><div class="label">Avg. score</div><div class="value" id="kpiAvg">0</div><div class="sub">across visible leads</div></div>
+    <div class="kpi"><div class="label">Funding signals</div><div class="value" id="kpiFunding">0</div><div class="sub">recent Seed–Series B</div></div>
+    <div class="kpi"><div class="label">International signals</div><div class="value" id="kpiIntl">0</div><div class="sub">global / export intent</div></div>
+  </section>
+
+  <section class="toolbar">
+    <div class="field"><input class="search" id="search" placeholder="Search company, signal, sector…"></div>
+    <div class="field"><select id="stage"><option value="">All stages</option><option>Pre-Seed</option><option>Seed</option><option>Series A</option><option>Series B</option></select></div>
+    <div class="field"><select id="sector"><option value="">All sectors</option></select></div>
+    <div class="field"><select id="minScore"><option value="0">Any score</option><option value="40">40+</option><option value="60">60+</option><option value="70">70+</option><option value="80">80+</option></select></div>
+    <div class="toolbar-spacer"></div><div class="count" id="count"></div>
+    <button class="btn small" id="resetBtn">Reset</button>
+  </section>
+
+  <div class="layout">
+    <section class="list" id="list"></section>
+    <aside class="side">
+      <div class="side-head"><h3>Scoring model</h3><button class="btn small" id="editConfig">Edit</button></div>
+      <div class="config-section"><div class="config-title">Weights</div><div id="weights"></div></div>
+      <div class="config-section"><div class="config-title">Positive signals</div><div class="chips" id="positiveChips"></div></div>
+      <div class="config-section"><div class="config-title">Sources</div><div id="sources"></div></div>
+    </aside>
+  </div>
+</main>
+</div>
+
+<div class="modal-wrap" id="modalWrap">
+  <div class="modal">
+    <h2>Workspace config</h2><p>Edit the live local configuration. Changes are saved to this browser only.</p>
+    <textarea id="configEditor"></textarea>
+    <div class="modal-actions"><button class="btn" id="closeModal">Cancel</button><button class="btn primary" id="saveConfig">Save config</button></div>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+const DEFAULT_CONFIG = {"threshold": 40, "sources": {"inc42": true, "yourstory": true, "googleNews": true, "firecrawl": true, "apify": false}, "keywords": {"positive": ["global", "international", "export", "multi-currency", "US market", "UK market", "Amazon Global", "cross-border", "overseas", "international customers"], "negative": ["Razorpay Cross-border", "Skydo", "Xflow"]}, "weights": {"funding": 40, "international": 30, "sector": 15, "paymentPage": 10, "competitor": -15}, "fundingStages": ["Pre-Seed", "Seed", "Series A", "Series B"], "sectors": ["SaaS", "D2C", "Export", "Edtech", "Travel", "IT Services", "Agency", "Marketplace", "Other"]};
+const SEED_LEADS = [{"id": "lead_001", "company": "NovaCart", "sector": "D2C", "score": 88, "funding": {"amount": "$8M", "stage": "Series A", "date": "2026-09-28", "investors": ["Peak XV", "Blume Ventures"]}, "signals": ["US market expansion", "international customers", "cross-border checkout"], "why": "Recently raised Series A and is actively expanding its D2C brand into the US, creating a strong cross-border collections use case.", "website": "https://example.com", "source": "https://inc42.com/", "sourceTitle": "NovaCart raises Series A to expand into US markets", "date": "2026-09-28", "competitor": null}, {"id": "lead_002", "company": "OrbitStack", "sector": "SaaS", "score": 82, "funding": {"amount": "\u20b962 Cr", "stage": "Series B", "date": "2026-09-24", "investors": ["Accel", "Lightspeed"]}, "signals": ["global customers", "US revenue", "multi-currency"], "why": "B2B SaaS company with a meaningful overseas customer base and fresh growth capital.", "website": "https://example.com", "source": "https://yourstory.com/", "sourceTitle": "OrbitStack secures Series B for global expansion", "date": "2026-09-24", "competitor": null}, {"id": "lead_003", "company": "MangoTrail", "sector": "Travel", "score": 69, "funding": {"amount": "\u20b928 Cr", "stage": "Seed", "date": "2026-09-20", "investors": ["Blume Ventures"]}, "signals": ["international travel", "overseas merchants"], "why": "Travel platform serving Indian and international travelers with an explicit overseas expansion signal.", "website": "https://example.com", "source": "https://inc42.com/", "sourceTitle": "MangoTrail raises seed round to expand international travel", "date": "2026-09-20", "competitor": null}, {"id": "lead_004", "company": "CraftGrid", "sector": "Export", "score": 63, "funding": null, "signals": ["exporter", "Amazon Global", "US customers"], "why": "Indian consumer-goods exporter with clear US demand and marketplace-led international sales.", "website": "https://example.com", "source": "https://yourstory.com/", "sourceTitle": "CraftGrid scales exports through global marketplaces", "date": "2026-09-18", "competitor": null}, {"id": "lead_005", "company": "CodeHarbor", "sector": "IT Services", "score": 48, "funding": null, "signals": ["US clients", "service exporter"], "why": "Indian IT services exporter with overseas clients, but limited recent funding or expansion evidence.", "website": "https://example.com", "source": "https://inc42.com/", "sourceTitle": "CodeHarbor grows US client base", "date": "2026-09-12", "competitor": "Skydo"}];
+let config = load("pg_config", DEFAULT_CONFIG);
+let leads = load("pg_leads", SEED_LEADS);
+let lastRefresh = load("pg_refresh", null);
+
+function load(k, fallback){try{const x=JSON.parse(localStorage.getItem(k));return x ?? fallback}catch{return fallback}}
+function save(k,v){localStorage.setItem(k,JSON.stringify(v))}
+function esc(s){return String(s??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]))}
+function toast(msg){const t=document.getElementById("toast");t.textContent=msg;t.classList.add("show");setTimeout(()=>t.classList.remove("show"),2200)}
+function scoreClass(s){return s>=70?"high":s>=40?"mid":"low"}
+function initials(n){return n.split(/\s+/).map(x=>x[0]).slice(0,2).join("").toUpperCase()}
+function render(){
+  const q=document.getElementById("search").value.toLowerCase().trim(), stage=document.getElementById("stage").value, sector=document.getElementById("sector").value, min=+document.getElementById("minScore").value;
+  const filtered=leads.filter(l=>{
+    const hay=[l.company,l.sector,l.why,...(l.signals||[]),l.funding?.stage||""].join(" ").toLowerCase();
+    return (!q||hay.includes(q))&&(!stage||l.funding?.stage===stage)&&(!sector||l.sector===sector)&&l.score>=min;
+  }).sort((a,b)=>b.score-a.score);
+  document.getElementById("count").textContent=`${filtered.length} of ${leads.length} leads`;
+  const qualified=leads.filter(l=>l.score>=config.threshold);
+  document.getElementById("kpiQualified").textContent= ̰qualified.length;
+  document.getElementById("kpiAvg").textContent=leads.length?Math.round(leads.reduce((a,l)=>a+l.score,0)/leads.length):0;
+  document.getElementById("kpiFunding").textContent=leads.filter(l=>l.funding).length;
+  document.getElementById("kpiIntl").textContent=leads.filter(l=>(l.signals||[]).length>0).length;
+  const list=document.getElementById("list");
+  list.innerHTML=filtered.length?filtered.map(l=>`
+    <article class="lead">
+      <div class="lead-top"><div class="avatar">${esc(initials(l.company))}</div><div class="lead-main">
+        <div class="name-row"><span class="name">${esc(l.company)}</span><span class="sector">${esc(l.sector)}</span><span class="score ${scoreClass(l.score)}">${l.score}</span></div>
+        <div class="funding">${l.funding?`${esc(l.funding.stage)} · ${esc(l.funding.amount)} · ${esc(l.funding.date)}`:"No recent funding signal"}</div>
+        <div class="reason">${esc(l.why)}</div>
+        <div class="signals">${(l.signals||[]).map(s=>`<span class="tag">${esc(s)}</span>`).join("")}</div>
+      </div></div>
+      <div class="lead-foot"><span>${esc(l.sourceTitle||"Source")}</span><div class="links"><a href="${esc(l.website)}" target="_blank" rel="noopener">Website ↗</a><a href="${esc(l.source)}" target="_blank" rel="noopener">Source ↗</a><button class="btn small" onclick="removeLead('${esc(l.id)}')">Not relevant</button></div></div>
+    </article>`).join(""):`<div class="empty"><strong>No high-intent leads here.</strong>Try broadening the filters or run a new scan.</div>`;
+  renderConfig(); populateSectors();
+}
+function populateSectors(){
+  const el=document.getElementById("sector"), current=el.value;
+  const sectors=[...new Set([...config.sectors,...leads.map(l=>l.sector)])];
+  el.innerHTML='<option value="">All sectors</option>'+sectors.map(s=>`<option>${esc(s)}</option>`).join("");
+  el.value=sectors.includes(current)?current:"";
+}
+function renderConfig(){
+  document.getElementById("weights").innerHTML=Object.entries(config.weights).map(([k,v])=>`<div class="weight"><span>${esc(k.replace(/([A-Z])/g," $1"))}</span><b>${v>0?"+":""}${v}</b></div>`).join("");
+  document.getElementById("positiveChips").innerHTML=config.keywords.positive.slice(0,12).map(x=>`<span class="chip">${esc(x)}</span>`).join("");
+  document.getElementById("sources").innerHTML=Object.entries(config.sources).map(([k,v])=>`<div class="source-row"><span>${esc(k)}</span><button class="switch ${v?"on":""}" onclick="toggleSource('${k}')"><i></i></button></div>`).join("");
+  document.getElementById("refreshText").textContent=lastRefresh?`Last scan ${new Date(lastRefresh).toLocaleString([], {dateStyle:"medium",timeStyle:"short"})}`:"Local workspace";
+}
+function toggleSource(k){config.sources[k]=!config.sources[k];save("pg_config",config);renderConfig();toast(`${k} ${config.sources[k]?"enabled":"disabled"}`)}
+function removeLead(id){leads=leads.filter(x=>x.id!==id);save("pg_leads",leads);render();toast("Lead removed from this workspace")}
+function resetFilters(){document.getElementById("search").value="";document.getElementById("stage").value="";document.getElementById("sector").value="";document.getElementById("minScore").value="0";render()}
+document.querySelectorAll("#search,#stage,#sector,#minScore").forEach(x=>x.addEventListener("input",render));
+document.getElementById("resetBtn").onclick=resetFilters;
+document.getElementById("configBtn").onclick=()=>openConfig();
+document.getElementById("editConfig").onclick=()=>openConfig();
+function openConfig(){document.getElementById("configEditor").value=JSON.stringify(config,null,2);document.getElementById("modalWrap").classList.add("open")}
+document.getElementById("closeModal").onclick=()=>document.getElementById("modalWrap").classList.remove("open");
+document.getElementById("saveConfig").onclick=()=>{try{config=JSON.parse(document.getElementById("configEditor").value);save("pg_config",config);document.getElementById("modalWrap").classList.remove("open");render();toast("Config saved locally")}catch(e){toast("Invalid JSON")}};
+document.getElementById("importBtn").onclick=()=>document.getElementById("fileInput").click();
+document.getElementById("fileInput").onchange=async e=>{const f=e.target.files[0];if(!f)return;try{const x=JSON.parse(await f.text());leads=Array.isArray(x)?x:(x.leads||[]);save("pg_leads",leads);render();toast(`${leads.length} leads imported`)}catch{toast("Could not read JSON")}e.target.value=""};
+document.getElementById("scanBtn").onclick=()=>{
+  const b=document.getElementById("scanBtn");b.classList.add("scanning");b.disabled=true;document.querySelector(".scanText").textContent="Scanning…";
+  setTimeout(()=>{
+    const now=new Date().toISOString();
+    lastRefresh=now;save("pg_refresh",now);
+    // Local-only demo scan: re-score existing candidates from the current config.
+    leads=leads.map(l=>{
+      let s=0;
+      if(l.funding)s+=config.weights.funding;
+      if((l.signals||[]).length)s+=config.weights.international;
+      if(config.sectors.includes(l.sector))s+=config.weights.sector;
+      if((l.signals||[]).some(x=>/payment|multi-currency|checkout/i.test(x)))s+=config.weights.paymentPage;
+      if(l.competitor)s+=config.weights.competitor;
+      return {...l,score:Math.min(100,Math.max(0,s))};
+    });
+    save("pg_leads",leads);b.classList.remove("scanning");b.disabled=false;document.querySelector(".scanText").textContent="Run New Scan";render();toast("Local scan complete");
+  },850);
+};
+render();
+</script>
+</body>
+</html>

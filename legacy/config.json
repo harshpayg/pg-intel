@@ -1,0 +1,53 @@
+{
+  "threshold": 40,
+  "sources": {
+    "inc42": true,
+    "yourstory": true,
+    "googleNews": true,
+    "firecrawl": true,
+    "apify": false
+  },
+  "keywords": {
+    "positive": [
+      "global",
+      "international",
+      "export",
+      "multi-currency",
+      "US market",
+      "UK market",
+      "Amazon Global",
+      "cross-border",
+      "overseas",
+      "international customers"
+    ],
+    "negative": [
+      "Razorpay Cross-border",
+      "Skydo",
+      "Xflow"
+    ]
+  },
+  "weights": {
+    "funding": 40,
+    "international": 30,
+    "sector": 15,
+    "paymentPage": 10,
+    "competitor": -15
+  },
+  "fundingStages": [
+    "Pre-Seed",
+    "Seed",
+    "Series A",
+    "Series B"
+  ],
+  "sectors": [
+    "SaaS",
+    "D2C",
+    "Export",
+    "Edtech",
+    "Travel",
+    "IT Services",
+    "Agency",
+    "Marketplace",
+    "Other"
+  ]
+}

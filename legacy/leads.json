@@ -1,0 +1,113 @@
+[
+  {
+    "id": "lead_001",
+    "company": "NovaCart",
+    "sector": "D2C",
+    "score": 88,
+    "funding": {
+      "amount": "$8M",
+      "stage": "Series A",
+      "date": "2026-09-28",
+      "investors": [
+        "Peak XV",
+        "Blume Ventures"
+      ]
+    },
+    "signals": [
+      "US market expansion",
+      "international customers",
+      "cross-border checkout"
+    ],
+    "why": "Recently raised Series A and is actively expanding its D2C brand into the US, creating a strong cross-border collections use case.",
+    "website": "https://example.com",
+    "source": "https://inc42.com/",
+    "sourceTitle": "NovaCart raises Series A to expand into US markets",
+    "date": "2026-09-28",
+    "competitor": null
+  },
+  {
+    "id": "lead_002",
+    "company": "OrbitStack",
+    "sector": "SaaS",
+    "score": 82,
+    "funding": {
+      "amount": "\u20b962 Cr",
+      "stage": "Series B",
+      "date": "2026-09-24",
+      "investors": [
+        "Accel",
+        "Lightspeed"
+      ]
+    },
+    "signals": [
+      "global customers",
+      "US revenue",
+      "multi-currency"
+    ],
+    "why": "B2B SaaS company with a meaningful overseas customer base and fresh growth capital.",
+    "website": "https://example.com",
+    "source": "https://yourstory.com/",
+    "sourceTitle": "OrbitStack secures Series B for global expansion",
+    "date": "2026-09-24",
+    "competitor": null
+  },
+  {
+    "id": "lead_003",
+    "company": "MangoTrail",
+    "sector": "Travel",
+    "score": 69,
+    "funding": {
+      "amount": "\u20b928 Cr",
+      "stage": "Seed",
+      "date": "2026-09-20",
+      "investors": [
+        "Blume Ventures"
+      ]
+    },
+    "signals": [
+      "international travel",
+      "overseas merchants"
+    ],
+    "why": "Travel platform serving Indian and international travelers with an explicit overseas expansion signal.",
+    "website": "https://example.com",
+    "source": "https://inc42.com/",
+    "sourceTitle": "MangoTrail raises seed round to expand international travel",
+    "date": "2026-09-20",
+    "competitor": null
+  },
+  {
+    "id": "lead_004",
+    "company": "CraftGrid",
+    "sector": "Export",
+    "score": 63,
+    "funding": null,
+    "signals": [
+      "exporter",
+      "Amazon Global",
+      "US customers"
+    ],
+    "why": "Indian consumer-goods exporter with clear US demand and marketplace-led international sales.",
+    "website": "https://example.com",
+    "source": "https://yourstory.com/",
+    "sourceTitle": "CraftGrid scales exports through global marketplaces",
+    "date": "2026-09-18",
+    "competitor": null
+  },
+  {
+    "id": "lead_005",
+    "company": "CodeHarbor",
+    "sector": "IT Services",
+    "score": 48,
+    "funding": null,
+    "signals": [
+      "US clients",
+      "service exporter"
+    ],
+    "why": "Indian IT services exporter with overseas clients, but limited recent funding or expansion evidence.",
+    "website": "https://example.com",
+    "source": "https://inc42.com/",
+    "sourceTitle": "CodeHarbor grows US client base",
+    "date": "2026-09-12",
+    "competitor": "Skydo"
+  }
+]

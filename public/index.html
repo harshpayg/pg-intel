@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>PayGlocal Lead Intel</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect x='3' y='3' width='26' height='26' rx='8' fill='none' stroke='%232563eb' stroke-width='4'/><path d='M11 17l4 4 7-9' fill='none' stroke='%232563eb' stroke-width='4' stroke-linecap='round'/></svg>">
+<link rel="stylesheet" href="/app.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand"><span class="mark"></span><span>PayGlocal</span><span class="brand-sub">/ Lead Intel</span></div>
+  <nav class="tabs" id="tabs">
+    <a href="#brief" data-view="brief">Brief</a>
+    <a href="#leads" data-view="leads">Leads</a>
+    <a href="#intel" data-view="intel">Market intel</a>
+    <a href="#live" data-view="live">Live</a>
+    <a href="#sources" data-view="sources">Sources</a>
+    <a href="#config" data-view="config">Config</a>
+  </nav>
+  <div class="top-actions">
+    <div class="engine" id="engine" title="Engine status"><span class="dot"></span><span id="engineText">Connecting…</span></div>
+    <button class="btn primary scan" id="scanBtn"><span class="spinner"></span><span>Scan now</span></button>
+  </div>
+</header>
+
+<main class="main">
+  <!-- BRIEF -->
+  <section class="view" id="view-brief">
+    <div class="hero">
+      <div>
+        <div class="eyebrow" id="briefEyebrow">Daily brief</div>
+        <h1 id="briefTitle">What's new since you last looked</h1>
+        <p id="briefSub">Only companies with a new signal since your last check. Mark the brief as read and tomorrow starts fresh.</p>
+      </div>
+      <div class="hero-actions">
+        <button class="btn ghost" id="undoAck" hidden>Undo</button>
+        <button class="btn" id="ackBrief">Mark brief as read</button>
+      </div>
+    </div>
+    <section class="kpis" id="kpis"></section>
+    <div class="layout">
+      <section>
+        <div class="section-head"><h2>Top leads</h2><span class="muted small" id="briefCount"></span></div>
+        <div class="cards" id="briefLeads"></div>
+      </section>
+      <aside class="side-col">
+        <div class="panel">
+          <div class="panel-head"><h3>Market intel</h3><a href="#intel" class="link small">All intel</a></div>
+          <div id="briefIntel" class="intel-mini"></div>
+        </div>
+        <div class="panel">
+          <div class="panel-head"><h3>Sector mix</h3><span class="muted small">companies · avg score</span></div>
+          <div id="sectorBars"></div>
+        </div>
+        <div class="panel">
+          <div class="panel-head"><h3>Engine activity</h3><a href="#live" class="link small">Live view</a></div>
+          <div id="miniFeed" class="feed mini"></div>
+        </div>
+      </aside>
+    </div>
+  </section>
+
+  <!-- LEADS -->
+  <section class="view" id="view-leads" hidden>
+    <div class="hero">
+      <div><div class="eyebrow">Pipeline</div><h1>All leads</h1><p>Every company the engine has found, scored against your current config.</p></div>
+      <div class="hero-actions"><a class="btn" id="csvBtn" href="/api/leads.csv">Export CSV</a></div>
+    </div>
+    <section class="toolbar">
+      <input class="input search" id="fQ" placeholder="Search company, city, reason…">
+      <select class="input" id="fSector"><option value="">All sectors</option></select>
+      <select class="input" id="fStage"><option value="">Any stage</option><option>Pre-Seed</option><option>Angel</option><option>Seed</option><option>Pre-Series A</option><option>Series A</option><option>Series B</option><option>Series C</option><option>Debt</option></select>
+      <select class="input" id="fMin"><option value="">Any score</option><option value="40">40+</option><option value="50">50+</option><option value="60">60+</option><option value="70">70+</option></select>
+      <select class="input" id="fStatus"><option value="">Active</option><option value="new">New</option><option value="reviewed">Reviewed</option><option value="contacted">Contacted</option><option value="qualified">Qualified</option><option value="dismissed">Dismissed</option><option value="all">Everything</option></select>
+      <select class="input" id="fDays"><option value="">Any time</option><option value="1">Last 24h</option><option value="7">Last 7 days</option><option value="30">Last 30 days</option></select>
+      <select class="input" id="fSort"><option value="">Sort: score</option><option value="recent">Sort: latest signal</option><option value="new">Sort: newest found</option><option value="name">Sort: name</option></select>
+      <label class="check"><input type="checkbox" id="fIntl"> International only</label>
+      <label class="check"><input type="checkbox" id="fEnt" checked> Hide enterprises</label>
+      <span class="spacer"></span><span class="muted small" id="leadCount"></span>
+    </section>
+    <div class="table" id="leadTable"></div>
+    <div class="pager"><button class="btn small" id="moreBtn" hidden>Load more</button></div>
+  </section>
+
+  <!-- INTEL -->
+  <section class="view" id="view-intel" hidden>
+    <div class="hero"><div><div class="eyebrow">Know the market</div><h1>Market intel</h1><p>Regulatory moves, competitor activity, export trends and real merchants describing payment pain.</p></div></div>
+    <div class="chips-row" id="intelTabs"></div>
+    <div class="intel-list" id="intelList"></div>
+  </section>
+
+  <!-- LIVE -->
+  <section class="view" id="view-live" hidden>
+    <div class="hero"><div><div class="eyebrow">24/7 engine</div><h1>Live pipeline</h1><p>Fetch, filter, extract, resolve, score, enrich. Watch it work in real time.</p></div>
+      <div class="hero-actions"><button class="btn" id="agentBtn">Run agent now</button></div></div>
+    <section class="funnel" id="funnel"></section>
+    <div class="layout">
+      <div class="panel"><div class="panel-head"><h3>Activity stream</h3><span class="muted small" id="liveCount"></span></div><div class="feed" id="liveFeed"></div></div>
+      <aside class="side-col">
+        <div class="panel"><div class="panel-head"><h3>LLM</h3></div><div id="llmPanel" class="kv"></div></div>
+        <div class="panel"><div class="panel-head"><h3>Recent runs</h3></div><div id="runsPanel" class="runs"></div></div>
+      </aside>
+    </div>
+  </section>
+
+  <!-- SOURCES -->
+  <section class="view" id="view-sources" hidden>
+    <div class="hero"><div><div class="eyebrow">Ingestion</div><h1>Sources</h1><p>Plug-in feeds the engine watches around the clock. Add your own, toggle any, and see which ones produce leads.</p></div></div>
+    <div class="panel add-source">
+      <div class="panel-head"><h3>Add a source</h3><span class="muted small">Validated with a live fetch before saving</span></div>
+      <form id="addSource" class="add-grid">
+        <select class="input" name="kind" id="srcKind">
+          <option value="rss">RSS / Atom feed</option>
+          <option value="gnews">Google News query</option>
+          <option value="reddit">Reddit</option>
+          <option value="hn">Hacker News search</option>
+        </select>
+        <input class="input grow" name="value" id="srcValue" placeholder="https://example.com/feed" required>
+        <select class="input" name="category"><option value="leads">Leads</option><option value="intel">Market intel</option><option value="voice">Voice of customer</option></select>
+        <input class="input" name="name" placeholder="Display name (optional)">
+        <button type="button" class="btn" id="testSrc">Test</button>
+        <button class="btn primary">Add source</button>
+      </form>
+      <div id="srcTest" class="src-test"></div>
+    </div>
+    <div class="table sources" id="sourceTable"></div>
+  </section>
+
+  <!-- CONFIG -->
+  <section class="view" id="view-config" hidden>
+    <div class="hero"><div><div class="eyebrow">Scoring model</div><h1>Config</h1><p>Everything is tunable. Nothing is a hard exclusion: negatives only lower scores. Preview the impact before saving.</p></div>
+      <div class="hero-actions"><button class="btn ghost" id="cfgReset">Reset to defaults</button><button class="btn" id="cfgPreview">Preview impact</button><button class="btn primary" id="cfgSave">Save and rescore</button></div></div>
+    <div class="config-grid" id="configForm"></div>
+    <div class="panel" id="previewPanel" hidden><div class="panel-head"><h3>Impact preview</h3><span class="muted small" id="previewSummary"></span></div><div id="previewTable"></div></div>
+    <details class="panel raw"><summary>Advanced: raw JSON</summary><textarea id="cfgRaw" spellcheck="false"></textarea><div class="row-end"><button class="btn small" id="cfgRawApply">Apply JSON to form</button></div></details>
+  </section>
+</main>
+
+<div class="drawer-wrap" id="drawerWrap"><aside class="drawer" id="drawer"></aside></div>
+<div class="toast" id="toast"></div>
+<script src="/app.js" type="module"></script>
+</body>
+</html>
