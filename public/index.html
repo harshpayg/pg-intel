@@ -1,15 +1,18 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="light">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>PayGlocal Lead Intel</title>
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect x='3' y='3' width='26' height='26' rx='8' fill='none' stroke='%232563eb' stroke-width='4'/><path d='M11 17l4 4 7-9' fill='none' stroke='%232563eb' stroke-width='4' stroke-linecap='round'/></svg>">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><path d='M16 3l11 6.3v12.4L16 28 5 21.7V9.3z' fill='none' stroke='%232f5fe3' stroke-width='3.5' stroke-linejoin='round'/></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"><rect x='3' y='3' width='26' height='26' rx='8' fill='none' stroke='%232563eb' stroke-width='4'/><path d='M11 17l4 4 7-9' fill='none' stroke='%232563eb' stroke-width='4' stroke-linecap='round'/></svg>">
 <link rel="stylesheet" href="/app.css">
 </head>
 <body>
 <header class="topbar">
-  <div class="brand"><span class="mark"></span><span>PayGlocal</span><span class="brand-sub">/ Lead Intel</span></div>
+  <div class="brand"><svg class="mark" viewBox="0 0 34 34" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linejoin="round" stroke-linecap="round"><path d="M17 3l12.5 7.2v13.6L17 31 4.5 23.8V10.2z"/><path d="M22 14.5a5.5 5.5 0 1 0 0 5H17"/></svg><span>PayGlocal</span><span class="brand-sub">/ Lead Intel</span></div>
   <nav class="tabs" id="tabs">
     <a href="#brief" data-view="brief">Brief</a>
     <a href="#leads" data-view="leads">Leads</a>
@@ -20,6 +23,7 @@
   </nav>
   <div class="top-actions">
     <div class="engine" id="engine" title="Engine status"><span class="dot"></span><span id="engineText">Connecting…</span></div>
+    <button class="logout" id="logoutBtn" hidden>Sign out</button>
     <button class="btn primary scan" id="scanBtn"><span class="spinner"></span><span>Scan now</span></button>
   </div>
 </header>

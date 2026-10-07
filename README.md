@@ -63,7 +63,7 @@ The original single-file prototype is in `legacy/`.
 1. Push this folder to a Git repo (`data/` and `.env` are git-ignored) and create a Railway project from it. `railway.json` sets the start command, the `/api/health` healthcheck and a single replica.
 2. **Add a Volume** to the service, mounted at `/data`. The SQLite DB lives there (picked up automatically via `RAILWAY_VOLUME_MOUNT_PATH`, or set `DB_PATH=/data/leadintel.db`). Without a volume, all data is lost on every deploy.
 3. **Variables** (service > Variables):
-   - `AUTH_PASSWORD` (required) and optionally `AUTH_USER` (default `admin`). The UI and API are behind HTTP Basic auth; `/api/health` stays open.
+   - `AUTH_PASSWORD` (required). Users get a branded password-only sign-in page and a 30-day session cookie; `/api/health` stays open. Optionally set `SESSION_SECRET` (changing it or the password signs everyone out).
    - `GEMINI_API_KEY`, `GEMINI_MODEL` (optional but recommended).
    - `REDDIT_CLIENT_ID`, `REDDIT_CLIENT_SECRET` (recommended; anonymous Reddit is often blocked from cloud IPs).
    - Do not set `PORT`; Railway provides it.

@@ -6,6 +6,7 @@ const safeUrl = (u) => (/^https?:\/\//i.test(u || '') ? u : '#');
 
 async function api(path, opts = {}) {
   const res = await fetch(`/api${path}`, { headers: { 'content-type': 'application/json' }, ...opts, body: opts.body ? JSON.stringify(opts.body) : undefined });
+  if (res.status === 401) { location.href = '/login'; throw new Error('Signed out'); }
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
   return data;
@@ -491,3 +492,11 @@ if (!new URLSearchParams(location.search).has('static')) {
   connectStream();
   setInterval(loadStats, 20000);
 }
+
+// Show "Sign out" only when the server has a password set.
+fetch('/api/health').then((r) => r.json()).then((h) => {
+  if (!h.auth) return;
+  const b = $('#logoutBtn');
+  b.hidden = false;
+  b.onclick = async () => { await fetch('/auth/logout', { method: 'POST' }); location.href = '/login'; };
+}).catch(() => {});

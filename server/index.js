@@ -24,11 +24,10 @@ for (const s of SEED_SOURCES) {
 
 // Public mode: any hosted environment (Railway sets PORT and RAILWAY_*), or an explicit HOST.
 const PUBLIC = Boolean(process.env.RAILWAY_ENVIRONMENT || process.env.PUBLIC_MODE === '1' || process.env.NODE_ENV === 'production');
-const AUTH_USER = process.env.AUTH_USER || 'admin';
 const AUTH_PASSWORD = process.env.AUTH_PASSWORD || '';
 
 if (PUBLIC && !AUTH_PASSWORD && process.env.ALLOW_NO_AUTH !== '1') {
-  console.error('Refusing to start publicly without auth: this app exposes lead data and editable config. Set AUTH_PASSWORD (and optionally AUTH_USER), or ALLOW_NO_AUTH=1 to override.');
+  console.error('Refusing to start publicly without auth: this app exposes lead data and editable config. Set AUTH_PASSWORD, or ALLOW_NO_AUTH=1 to override.');
   process.exit(1);
 }
 
@@ -38,21 +37,46 @@ const safeEq = (a, b) => {
   return crypto.timingSafeEqual(ha, hb);
 };
 
-function basicAuth(req, res, next) {
-  if (!AUTH_PASSWORD || req.path === '/api/health') return next(); // health stays open for the platform healthcheck
-  const m = (req.headers.authorization || '').match(/^Basic (.+)$/i);
-  if (m) {
-    const [user, ...rest] = Buffer.from(m[1], 'base64').toString('utf8').split(':');
-    if ([safeEq(user, AUTH_USER), safeEq(rest.join(':'), AUTH_PASSWORD)].every(Boolean)) return next();
-  }
-  res.set('WWW-Authenticate', 'Basic realm="PayGlocal Lead Intel", charset="UTF-8"').status(401).send('Authentication required');
+// Password-only login with a signed, HttpOnly session cookie. Changing the password (or SESSION_SECRET) logs everyone out.
+const COOKIE = 'lis';
+const SESSION_DAYS = 30;
+const SECRET = process.env.SESSION_SECRET || crypto.createHash('sha256').update(`leadintel:${AUTH_PASSWORD}`).digest('hex');
+const sign = (v) => crypto.createHmac('sha256', SECRET).update(v).digest('base64url');
+const makeToken = () => { const exp = String(Date.now() + SESSION_DAYS * 86400000); return `${exp}.${sign(exp)}`; };
+function validToken(t) {
+  const [exp, sig] = String(t || '').split('.');
+  return Boolean(exp && sig && Number(exp) > Date.now() && safeEq(sig, sign(exp)));
 }
+const cookieOf = (req) => (req.headers.cookie || '').split(/;\s*/).map((c) => c.split('=')).find(([k]) => k === COOKIE)?.[1];
+const authed = (req) => !AUTH_PASSWORD || validToken(cookieOf(req));
+const here = path.dirname(fileURLToPath(import.meta.url));
+
+// Brute-force guard: 8 failed attempts per IP per 15 minutes.
+const fails = new Map();
+const tooMany = (ip) => { const f = fails.get(ip); return f && f.until > Date.now() && f.n >= 8; };
+const noteFail = (ip) => { const f = fails.get(ip); fails.set(ip, f && f.until > Date.now() ? { n: f.n + 1, until: f.until } : { n: 1, until: Date.now() + 15 * 60000 }); };
 
 const app = express();
 app.disable('x-powered-by');
 app.set('trust proxy', 1); // behind Railway's proxy
-app.use(basicAuth);
 app.use(express.json({ limit: '1mb' }));
+
+app.get('/login', (req, res) => (authed(req) ? res.redirect('/') : res.sendFile(path.join(here, 'login.html'))));
+app.post('/auth/login', (req, res) => {
+  if (!AUTH_PASSWORD) return res.json({ ok: true });
+  if (tooMany(req.ip)) return res.status(429).json({ error: 'Too many attempts. Try again in a few minutes.' });
+  if (!safeEq(req.body?.password ?? '', AUTH_PASSWORD)) { noteFail(req.ip); return res.status(401).json({ error: 'Incorrect password' }); }
+  fails.delete(req.ip);
+  res.cookie(COOKIE, makeToken(), { httpOnly: true, sameSite: 'lax', secure: req.secure, maxAge: SESSION_DAYS * 86400000, path: '/' });
+  res.json({ ok: true });
+});
+app.post('/auth/logout', (req, res) => { res.clearCookie(COOKIE, { path: '/' }); res.json({ ok: true }); });
+
+// Gate everything else. /api/health stays open for the platform healthcheck.
+app.use((req, res, next) => {
+  if (req.path === '/api/health' || authed(req)) return next();
+  return req.path.startsWith('/api') ? res.status(401).json({ error: 'auth' }) : res.redirect('/login');
+});
 app.use('/api', api);
 app.use(express.static(path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'public'), { extensions: ['html'] }));
 

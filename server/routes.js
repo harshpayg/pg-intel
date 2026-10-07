@@ -352,4 +352,4 @@ api.get('/stream', (req, res) => {
 });
 
 // Unauthenticated (platform healthcheck), so expose nothing sensitive.
-api.get('/health', (req, res) => { q.get('SELECT 1'); res.json({ ok: true, time: nowIso() }); });
+api.get('/health', (req, res) => { q.get('SELECT 1'); res.json({ ok: true, auth: Boolean(process.env.AUTH_PASSWORD), time: nowIso() }); });

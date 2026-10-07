@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Sign in · PayGlocal Lead Intel</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><path d='M16 3l11 6.3v12.4L16 28 5 21.7V9.3z' fill='none' stroke='%232f5fe3' stroke-width='3.5' stroke-linejoin='round'/></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{--blue:#2f5fe3;--blue-hi:#4577f0;--ink:#14161c;--muted:#5f6673;--line:#e3e8f2;--card:#fff;--bg:#f6f8fd;--red:#c93a3a;--dot:#c7d0ee}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--blue:#6b92ff;--blue-hi:#5b82f5;--ink:#e9edf6;--muted:#9aa4b6;--line:#263044;--card:#121a28;--bg:#0b101a;--red:#ff8a8a;--dot:#27365c}}
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;display:grid;place-items:center;padding:24px;background:var(--bg);color:var(--ink);font:15px/1.5 Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+  background-image:radial-gradient(var(--dot) 1.4px,transparent 1.5px),radial-gradient(900px 500px at 85% 10%,#3b6ef01f,transparent 70%);background-size:16px 16px,auto;background-attachment:fixed}
+.wrap{width:100%;max-width:420px}
+.brand{display:flex;align-items:center;gap:10px;justify-content:center;margin-bottom:26px;font-size:28px;font-weight:700;letter-spacing:-.02em;color:var(--blue)}
+.brand svg{width:34px;height:34px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:22px;padding:34px 32px 28px;box-shadow:0 24px 60px #1d3a8a1a}
+.eyebrow{font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);font-weight:500}
+h1{margin:6px 0 6px;font-size:28px;line-height:1.2;letter-spacing:-.025em;font-weight:700}
+h1 em{font-style:normal;color:var(--blue)}
+p.sub{margin:0 0 22px;color:var(--muted)}
+label{display:block;font-size:13px;font-weight:600;margin-bottom:6px}
+.field{position:relative}
+input{width:100%;height:50px;border:1px solid var(--line);background:transparent;color:var(--ink);border-radius:999px;padding:0 48px 0 20px;font:inherit;outline:none;transition:.15s}
+input:focus{border-color:var(--blue-hi);box-shadow:0 0 0 4px #3b6ef01f}
+.eye{position:absolute;right:8px;top:7px;width:36px;height:36px;border:0;background:transparent;border-radius:50%;color:var(--muted);cursor:pointer;display:grid;place-items:center}
+.eye:hover{background:#3b6ef012;color:var(--blue)}
+button.go{margin-top:16px;width:100%;height:50px;border:0;border-radius:999px;color:#fff;font:inherit;font-weight:600;cursor:pointer;background:linear-gradient(135deg,var(--blue-hi),var(--blue));box-shadow:0 10px 24px #2f5fe340;transition:.15s;display:flex;align-items:center;justify-content:center;gap:8px}
+button.go:hover{transform:translateY(-1px);box-shadow:0 14px 30px #2f5fe34d}
+button.go:disabled{opacity:.7;pointer-events:none}
+.spin{width:16px;height:16px;border:2px solid #ffffff66;border-top-color:#fff;border-radius:50%;display:none;animation:s .7s linear infinite}
+.busy .spin{display:block}@keyframes s{to{transform:rotate(360deg)}}
+.err{min-height:20px;margin:10px 4px 0;color:var(--red);font-size:13px}
+.trust{display:flex;justify-content:center;gap:18px;flex-wrap:wrap;margin-top:22px;color:var(--muted);font-size:12.5px;font-weight:500}
+.trust span{display:flex;align-items:center;gap:6px}.trust svg{width:15px;height:15px;color:var(--blue)}
+.shake{animation:sh .35s}@keyframes sh{20%,60%{transform:translateX(-6px)}40%,80%{transform:translateX(6px)}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="brand">
+    <svg viewBox="0 0 34 34" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linejoin="round" stroke-linecap="round"><path d="M17 3l12.5 7.2v13.6L17 31 4.5 23.8V10.2z"/><path d="M22 14.5a5.5 5.5 0 1 0 0 5H17"/></svg>
+    PayGlocal
+  </div>
+  <form class="card" id="f" autocomplete="off">
+    <div class="eyebrow">Lead Intel</div>
+    <h1>Sign in to your <em>workspace</em></h1>
+    <p class="sub">Enter the team password to continue.</p>
+    <label for="pw">Password</label>
+    <div class="field">
+      <input id="pw" type="password" autocomplete="current-password" autofocus required>
+      <button type="button" class="eye" id="eye" aria-label="Show password">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>
+      </button>
+    </div>
+    <div class="err" id="err" role="alert"></div>
+    <button class="go" id="go" type="submit"><span class="spin"></span><span>Continue</span></button>
+  </form>
+  <div class="trust">
+    <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/></svg>RBI PA authorized</span>
+    <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M8 12l3 3 5-6"/></svg>PCI-DSS Level 1</span>
+  </div>
+</div>
+<script>
+const f = document.getElementById('f'), pw = document.getElementById('pw'), err = document.getElementById('err'), go = document.getElementById('go');
+document.getElementById('eye').onclick = () => { pw.type = pw.type === 'password' ? 'text' : 'password'; pw.focus(); };
+f.onsubmit = async (e) => {
+  e.preventDefault();
+  err.textContent = ''; go.classList.add('busy'); go.disabled = true;
+  try {
+    const r = await fetch('/auth/login', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ password: pw.value }) });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.error || 'Sign in failed');
+    location.replace('/');
+  } catch (x) {
+    err.textContent = x.message;
+    f.classList.remove('shake'); void f.offsetWidth; f.classList.add('shake');
+    pw.select();
+    go.classList.remove('busy'); go.disabled = false;
+  }
+};
+</script>
+</body>
+</html>
