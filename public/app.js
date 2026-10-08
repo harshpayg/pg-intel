@@ -93,7 +93,8 @@ function leadCard(l) {
       <div class="name-row"><span class="name">${esc(l.name)}</span><span class="pill">${esc(l.sector || 'Other')}</span>
         ${l.badge ? `<span class="badge ${l.badge}">${l.badge}</span>` : ''}${l.explore ? '<span class="badge explore" title="Exploration slot: keeps the brief diverse">explore</span>' : ''}
         <span class="score ${scoreClass(l.score)}" title="${esc(l.breakdown.filter((b) => b.points).map((b) => `${b.label}: ${b.points > 0 ? '+' : ''}${b.points}`).join('\n'))}">${l.score}</span></div>
-      <div class="meta">${esc(fundTxt || 'No funding signal')}${where ? ` · ${esc(where)}` : ''}</div>
+      <div class="meta">${esc(fundTxt || 'No funding signal')}${where ? ` · ${esc(where)}` : ''}${l.team ? ` · team ${l.team.exact ? '' : '~'}${esc(l.team.label)}` : ''}</div>
+      ${l.contact ? `<div class="reach">Reach: <b>${esc(l.contact.name)}</b>${l.contact.role ? `, ${esc(l.contact.role)}` : ''}${l.contact.hasEmail ? ' · ✉ verified' : ''}</div>` : l.target ? `<div class="reach muted">Reach: ${esc(l.target.roles.slice(0, 2).join(' or '))}</div>` : ''}
       <div class="reason">${esc(l.why || '')}</div>
       <div class="tags">${l.signals.slice(0, 5).map((s) => `<span class="tag">${esc(s)}</span>`).join('')}${stack}</div>
     </div></div>
@@ -217,6 +218,7 @@ function renderDrawer(l) {
     <div class="panel"><div class="panel-head"><h3>Why this company</h3></div><div>${esc(l.why || '')}</div>
       ${l.signals.length ? `<div class="tags" style="margin-top:10px">${l.signals.map((s) => `<span class="tag">${esc(s)}</span>`).join('')}</div>` : ''}</div>
     ${l.pitch ? `<div class="panel"><div class="panel-head"><h3>Outreach angle</h3></div><div class="pitch"><button class="btn small" id="dCopy">Copy</button><div style="padding-right:60px">${esc(l.pitch)}</div></div></div>` : ''}
+    ${peoplePanel(l)}
     <div class="panel"><div class="panel-head"><h3>Score breakdown</h3><span class="muted small">weights editable in Config</span></div>
       ${pos.map((b) => `<div class="bd-row"><span>${esc(b.label)}</span><div class="bar"><i style="width:${b.max ? (b.points / b.max) * 100 : 0}%"></i></div><span class="muted">${b.points}/${b.max}</span><small>${esc(b.detail)}</small></div>`).join('')}
       ${neg.map((b) => `<div class="bd-row neg"><span>${esc(b.label)}</span><div class="bar"><i style="width:100%"></i></div><span class="muted">${b.points}</span><small>${esc(b.detail)}</small></div>`).join('')}
@@ -253,6 +255,72 @@ function renderDrawer(l) {
   $('#dEnrich').onclick = async (ev) => { ev.target.disabled = true; ev.target.textContent = 'Researching…'; try { await api(`/leads/${l.id}/enrich`, { method: 'POST' }); renderDrawer(await api(`/leads/${l.id}`)); toast('Research complete'); } catch (err) { toast(err.message); ev.target.disabled = false; } };
   $('#dLike').onclick = async () => { const r = await api(`/leads/${l.id}/lookalike`, { method: 'POST' }); toast(r.sources.length ? `Agent launched ${r.sources.length} lookalike searches. New leads will stream in.` : 'Lookalike searches already running for this profile.'); };
   if ($('#dCopy')) $('#dCopy').onclick = () => { navigator.clipboard.writeText(l.pitch); toast('Copied'); };
+  bindPeople(l);
+}
+
+// ---------- decision makers ----------
+const liSearch = (q) => `https://www.linkedin.com/search/results/people/?keywords=${encodeURIComponent(q)}`;
+const gSearch = (q) => `https://www.google.com/search?q=${encodeURIComponent(q)}`;
+const SRC_LABEL = { news: 'news', article: 'article', website: 'company site', yc: 'Y Combinator', apollo: 'Apollo', manual: 'added manually' };
+const TEAM_SRC = { yc: 'Y Combinator', apollo: 'Apollo', website: 'company site', article: 'article', news: 'news', stage: 'estimated from funding stage', leadership: 'estimated from leadership size', manual: 'manual' };
+
+function peoplePanel(l) {
+  const prov = l.emailProviders;
+  const canFind = prov?.configured?.length > 0;
+  const people = l.contacts || [];
+  const teamTxt = l.team ? `Team ${l.team.exact ? '' : '~'}${esc(l.team.label)} · ${esc(TEAM_SRC[l.team.source] || l.team.source)}` : 'Team size unknown';
+  const person = (p) => {
+    const emailBit = p.email
+      ? `<a href="mailto:${esc(p.email)}">${esc(p.email)}</a> <span class="estatus ${esc(p.emailStatus)}">${esc(p.emailStatus === 'risky' ? 'accept-all, risky' : p.emailStatus)}</span>`
+      : p.dnc ? '' : canFind ? `<button class="btn small" data-find="${p.id}">${p.emailCheckedAt ? 'Retry email lookup' : 'Find verified email'}</button>${p.emailCheckedAt ? ` <span class="muted small">none verified ${ago(p.emailCheckedAt)}</span>` : ''}` : '';
+    return `<div class="person ${p.dnc ? 'dnc' : ''}">
+      <div class="avatar sm">${esc(initials(p.name))}</div>
+      <div class="person-main">
+        <div><b>${esc(p.name)}</b>${p.primary ? ' <span class="badge new">best fit</span>' : ''}${p.dnc ? ' <span class="badge dnc-b">do not contact</span>' : ''}</div>
+        <div class="muted small">${esc(p.role || 'Role unknown')} · <a class="link" href="${esc(safeUrl(p.sourceUrl))}" target="_blank" rel="noopener" title="${esc(p.evidence || '')}">from ${esc(SRC_LABEL[p.source] || p.source)}</a></div>
+        <div class="person-links small">${emailBit}
+          <a class="link" href="${esc(p.linkedin ? safeUrl(p.linkedin) : liSearch(`${p.name} ${l.name}`))}" target="_blank" rel="noopener">${p.linkedin ? 'LinkedIn profile' : 'Find on LinkedIn'}</a>
+          <a class="link" href="${esc(gSearch(`"${p.name}" "${l.name}"`))}" target="_blank" rel="noopener">Google</a></div>
+      </div>
+      <div class="person-actions">
+        <button class="btn small ghost" data-dnc="${p.id}" data-on="${p.dnc ? 1 : 0}" title="Never suggest or look up this person">${p.dnc ? 'Allow contact' : 'Do not contact'}</button>
+        <button class="btn small ghost danger" data-del-contact="${p.id}" title="Delete and never re-add from research">✕</button>
+      </div></div>`;
+  };
+  const roleLinks = l.target.roles.slice(0, 3).map((r) => `<a class="chip-link" href="${esc(liSearch(`${r} ${l.name}`))}" target="_blank" rel="noopener">${esc(r)} at ${esc(l.name)} ↗</a>`).join('');
+  const jobs = l.openRoles;
+  return `<div class="panel"><div class="panel-head"><h3>Decision makers</h3><span class="muted small" title="${esc(l.team?.evidence || '')}">${teamTxt}</span></div>
+    <div class="target"><b>Reach out to:</b> ${esc(l.target.roles.join(' → '))}<div class="muted small">${esc(l.target.reason)}</div></div>
+    ${people.length ? people.map(person).join('') : `<div class="muted small" style="margin:10px 0">No named people yet. ${l.enrichedAt ? 'Research found none on the article or site.' : 'Run "Research now" to read the article and the About/Team pages.'}</div>`}
+    <div class="role-links"><span class="muted small">Search LinkedIn:</span> ${roleLinks}</div>
+    ${l.inboxes?.length ? `<div class="small" style="margin-top:8px"><span class="muted">Company inboxes:</span> ${l.inboxes.map((e) => `<a href="mailto:${esc(e)}">${esc(e)}</a>`).join(', ')}</div>` : ''}
+    ${jobs?.count != null ? `<div class="small" style="margin-top:6px"><span class="muted">Hiring:</span> <a class="link" href="${esc(safeUrl(jobs.url))}" target="_blank" rel="noopener">${jobs.count} open roles${jobs.ats ? ` on ${esc(jobs.ats)}` : ''}</a>${jobs.titles?.length ? ` <span class="muted">(${esc(jobs.titles.slice(0, 3).join(', '))}${jobs.titles.length > 3 ? '…' : ''})</span>` : ''}</div>` : ''}
+    <details class="add-person"><summary class="small link">Add a person</summary>
+      <form id="addPerson" class="add-grid" style="margin-top:8px"><input class="input" name="name" placeholder="Full name" required><input class="input" name="role" placeholder="Role (e.g. CFO)"><input class="input" name="email" type="email" placeholder="Work email (optional)"><button class="btn small primary">Add</button></form>
+    </details>
+    <div class="muted small" style="margin-top:10px">${canFind ? `Verified email lookups: ${esc(prov.configured.map((p) => p.label).join(', '))} · ${prov.used}/${prov.cap} this month.` : 'Verified email lookup is off: add APOLLO_API_KEY or HUNTER_API_KEY to enable it.'} Each person shows where they were found; removing someone keeps them out of future research.</div>
+  </div>`;
+}
+
+function bindPeople(l) {
+  const refresh = async () => renderDrawer(await api(`/leads/${l.id}`));
+  $$('[data-find]', $('#drawer')).forEach((b) => (b.onclick = async () => {
+    b.disabled = true; b.textContent = 'Looking up…';
+    try { const r = await api(`/contacts/${b.dataset.find}/find-email`, { method: 'POST' }); toast(r.found ? `Found a ${r.status} email via ${r.provider}` : r.note || `No verified email at ${r.provider}`); }
+    catch (e) { toast(e.message); }
+    refresh();
+  }));
+  $$('[data-dnc]', $('#drawer')).forEach((b) => (b.onclick = async () => { await api(`/contacts/${b.dataset.dnc}`, { method: 'PATCH', body: { dnc: b.dataset.on !== '1' } }); refresh(); }));
+  $$('[data-del-contact]', $('#drawer')).forEach((b) => (b.onclick = async () => {
+    if (!confirm('Delete this person? They will not be re-added by future research.')) return;
+    await api(`/contacts/${b.dataset.delContact}`, { method: 'DELETE' }); toast('Removed'); refresh();
+  }));
+  const f = $('#addPerson');
+  if (f) f.onsubmit = async (e) => {
+    e.preventDefault();
+    const d = Object.fromEntries(new FormData(f));
+    try { await api(`/leads/${l.id}/contacts`, { method: 'POST', body: d }); toast('Added'); refresh(); } catch (err) { toast(err.message); }
+  };
 }
 
 function closeDrawer() {
@@ -421,7 +489,14 @@ function renderConfigForm(c, learned = {}) {
       <div class="cfg-row"><span>LLM daily call cap</span>${range('llm.dailyCallCap', c.llm.dailyCallCap, 0, 2000, 50)}</div>
       <div class="cfg-row"><span>LLM batch size</span>${range('llm.batchSize', c.llm.batchSize, 1, 15)}</div>
       <div class="cfg-row"><span>Auto-research min score</span>${range('enrichment.minScore', c.enrichment.minScore, 0, 90)}</div>
-      <div class="cfg-row"><span>Max article age (days)</span>${range('maxItemAgeDays', c.maxItemAgeDays, 3, 120)}</div></div>`;
+      <div class="cfg-row"><span>Max article age (days)</span>${range('maxItemAgeDays', c.maxItemAgeDays, 3, 120)}</div></div>
+    <div class="panel"><div class="panel-head"><h3>Decision makers</h3></div>
+      <p class="hint">Team size decides who the engine suggests: founder/CTO for small teams, finance/payments owner for mid-size, CFO/treasury for large.</p>
+      <div class="cfg-row"><span>Small team up to</span>${range('contacts.smallTeamMax', c.contacts.smallTeamMax, 5, 200, 5)}</div>
+      <div class="cfg-row"><span>Mid-size up to</span>${range('contacts.midTeamMax', c.contacts.midTeamMax, 50, 2000, 50)}</div>
+      <div class="cfg-field"><label>Email lookup provider (needs its API key on the server)</label><select class="input" data-path="contacts.emailProvider">${['auto', 'apollo', 'hunter'].map((v) => `<option value="${v}" ${c.contacts.emailProvider === v ? 'selected' : ''}>${v === 'auto' ? 'Auto (whichever key is set)' : v[0].toUpperCase() + v.slice(1)}</option>`).join('')}</select></div>
+      <div class="cfg-row"><span>Paid lookups per month</span>${range('contacts.monthlyLookupCap', c.contacts.monthlyLookupCap, 0, 1000, 10)}</div>
+      <div class="cfg-row"><span>Auto-find email at score (0 = only on click)</span>${range('contacts.autoFindEmailMinScore', c.contacts.autoFindEmailMinScore, 0, 100, 5)}</div></div>`;
   $('#cfgRaw').value = JSON.stringify(c, null, 2);
 }
 

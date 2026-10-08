@@ -2,6 +2,7 @@ import { getConfig } from '../config.js';
 import { q } from '../db.js';
 import * as llm from './llm.js';
 import { parseAmountUsdM, clip, domainOf } from '../util/text.js';
+import { peopleFromText, teamFromText } from './people.js';
 
 // ---------- shared vocab ----------
 export const SECTOR_RULES = [
@@ -133,6 +134,8 @@ function heuristicLead(item, source, cfg) {
 
   return {
     name,
+    people: peopleFromText(text, name),
+    team: teamFromText(text),
     website: null,
     is_indian: true,
     city,
@@ -195,6 +198,7 @@ function structuredLead(item, cfg) {
   const b2b = /b2b|saas|developer|enterprise|api|infrastructure/i.test(e.industry || '');
   return {
     name: e.name,
+    team: e.team_size ? { min: e.team_size, max: e.team_size, exact: true, evidence: `Team size listed on Y Combinator (${e.batch})` } : null,
     website: e.website,
     logo: e.logo,
     is_indian: true,
@@ -247,6 +251,8 @@ const SCHEMA = () => ({
                 sells_intl: { type: 'STRING', enum: ['yes', 'likely', 'unknown', 'no'] },
                 markets: { type: 'ARRAY', items: { type: 'STRING' } },
                 payment_pain: { type: 'STRING', nullable: true },
+                people: { type: 'ARRAY', items: { type: 'OBJECT', properties: { name: { type: 'STRING' }, role: { type: 'STRING' }, evidence: { type: 'STRING' } }, required: ['name', 'role'] } },
+                team_size: { type: 'INTEGER', nullable: true },
                 confidence: { type: 'NUMBER' },
                 event: {
                   type: 'OBJECT',
@@ -303,6 +309,8 @@ Your job for each news item / post:
    - event.amount_usd_m: amount in USD millions (convert INR at 85/USD; 1 crore = 10,000,000 INR). null if not stated.
    - event.stage: e.g. "Pre-Seed", "Seed", "Pre-Series A", "Series A", "Series B", "Series C", "Debt", "Bridge", or null.
    - payment_pain: a short quote/paraphrase if the item mentions difficulty collecting money from abroad, otherwise null.
+   - people: founders/CXOs/MDs of THIS company named in the item, with role and a short verbatim quote as evidence. Never investors, angels or people from other companies. Empty if none.
+   - team_size: headcount only if the item states it (e.g. "40-member team"), else null.
    - confidence: 0..1 that this is a real Indian company correctly extracted.
 2. "intel": set when the item is useful market/regulatory/competitor knowledge for PayGlocal leadership, or a "voice of customer" post describing payment pain (category "voice"). importance 1 (FYI) to 3 (act now). so_what: one sentence on what PayGlocal should do or know. Otherwise null.
 Return one result per input item index "i". Be precise and conservative. Do not invent websites; only include a website if the item states it or it is unambiguous.`;
@@ -371,6 +379,8 @@ function cleanLlmLead(l) {
   return {
     ...l,
     website: l.website && domainOf(l.website) ? l.website : null,
+    people: (l.people || []).slice(0, 6),
+    team: l.team_size ? { min: l.team_size, max: l.team_size, exact: true, evidence: 'Headcount stated in news coverage' } : null,
     markets: [...new Set(l.markets || [])],
     confidence: Math.max(0, Math.min(1, Number(l.confidence) || 0.5)),
     event: { ...l.event, stage: normStage(l.event?.stage) || l.event?.stage || null, investors: l.event?.investors || [], signals: l.event?.signals || [], competitors: l.event?.competitors || [] },

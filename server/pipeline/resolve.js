@@ -1,6 +1,7 @@
 import { q, J, nowIso } from '../db.js';
 import { getConfig } from '../config.js';
 import { normName, domainOf, jaroWinkler, tokens, jaccard, daysAgo } from '../util/text.js';
+import { saveContacts, saveTeam } from './people.js';
 
 const INTL_RANK = { no: 0, unknown: 1, likely: 2, yes: 3 };
 
@@ -62,6 +63,10 @@ export function upsertLead(lead, item, source, rawItemId) {
       JSON.stringify(aliases), JSON.stringify(markets), sellsIntl, domain, lead.website || null, lead.logo || null,
       lead.city || null, lead.description || null, lead.sector || 'Other', lead.size || 'unknown', lead.confidence ?? 0.5, nowIso(), c.id);
   }
+
+  // People and headcount mentioned in this item (provenance = the article itself).
+  if (lead.people?.length) saveContacts(c.id, lead.people, { source: lead.event?.type === 'directory' ? 'yc' : 'news', url: item.url, confidence: Math.min(0.8, lead.confidence ?? 0.6) });
+  if (lead.team) saveTeam(c.id, { ...lead.team, source: lead.event?.type === 'directory' ? 'yc' : 'news', url: item.url });
 
   const ev = lead.event || {};
   const evType = ev.type || 'other';

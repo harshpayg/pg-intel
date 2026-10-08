@@ -153,6 +153,39 @@ CREATE TABLE IF NOT EXISTS llm_usage (
 );
 `);
 
+// People at a company we might reach out to. Every row records where it came from (DPDP provenance).
+db.exec(`
+CREATE TABLE IF NOT EXISTS contacts (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  company_id INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  norm_name TEXT NOT NULL,
+  role TEXT,
+  email TEXT,
+  email_status TEXT,          -- verified | risky (accept-all domain) | null
+  email_source TEXT,          -- apollo | hunter | manual
+  email_checked_at TEXT,
+  linkedin TEXT,
+  source TEXT NOT NULL,       -- article | website | news | yc | apollo | manual
+  source_url TEXT,
+  evidence TEXT,
+  confidence REAL NOT NULL DEFAULT 0.6,
+  do_not_contact INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  UNIQUE(company_id, norm_name)
+);
+CREATE INDEX IF NOT EXISTS idx_contacts_company ON contacts(company_id);
+`);
+
+// Additive migrations for databases created by earlier versions (e.g. the Railway volume).
+function addColumn(table, col, type) {
+  const cols = db.prepare(`PRAGMA table_info(${table})`).all().map((c) => c.name);
+  if (!cols.includes(col)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${col} ${type}`);
+}
+addColumn('companies', 'team', 'TEXT');           // { min, max, exact, source, url, evidence, at }
+addColumn('companies', 'people_checked_at', 'TEXT');
+
 export const nowIso = () => new Date().toISOString();
 
 export const q = {

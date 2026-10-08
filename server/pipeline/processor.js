@@ -5,6 +5,8 @@ import { extractBatch } from './extract.js';
 import { upsertLead } from './resolve.js';
 import { rescore } from './score.js';
 import { enrichCompany } from './enrich.js';
+import { targetPlan, saveTeam } from './people.js';
+import { findEmail, providerStatus } from './email-finders.js';
 import * as llm from './llm.js';
 import { bus, log } from '../bus.js';
 
@@ -97,10 +99,12 @@ async function enrichLoop() {
   enriching = true;
   try {
     const cfg = getConfig();
-    const rows = q.all(`SELECT id FROM companies WHERE enriched_at IS NULL AND status != 'dismissed' AND score >= ? AND size != 'enterprise' ORDER BY score DESC LIMIT ?`, cfg.enrichment.minScore, cfg.enrichment.perCycle);
+    // people_checked_at IS NULL also picks up companies enriched before people research existed.
+    const rows = q.all(`SELECT id FROM companies WHERE (enriched_at IS NULL OR people_checked_at IS NULL) AND status != 'dismissed' AND score >= ? AND size != 'enterprise' ORDER BY score DESC LIMIT ?`, cfg.enrichment.minScore, cfg.enrichment.perCycle);
     for (const { id } of rows) {
       await enrichCompany(id);
       rescore(id);
+      await autoFindEmail(id, cfg);
       bus.emit('lead', { id, kind: 'enriched' });
     }
   } catch (e) {
@@ -110,7 +114,37 @@ async function enrichLoop() {
   }
 }
 
+// Optional: spend a paid lookup on the primary contact of high-intent leads (off by default).
+async function autoFindEmail(id, cfg) {
+  const min = cfg.contacts?.autoFindEmailMinScore || 0;
+  if (!min) return;
+  const c = q.get('SELECT * FROM companies WHERE id = ?', id);
+  if (!c || c.score < min) return;
+  const st = providerStatus();
+  if (!st.configured.length || st.used >= st.cap) return;
+  const plan = targetPlan(c);
+  const primary = plan.primaryId && q.get('SELECT * FROM contacts WHERE id = ?', plan.primaryId);
+  if (!primary || primary.email || primary.email_checked_at) return;
+  await findEmail(primary.id).catch((e) => log('error', `Email lookup: ${e.message}`));
+}
+
+// One-off: YC companies ingested before team sizes were recorded get theirs from the stored item.
+function backfillYcTeams() {
+  const rows = q.all(`SELECT r.meta, r.url FROM raw_items r WHERE r.source_id = 'yc-india' AND r.meta LIKE '%"team_size"%'`);
+  let n = 0;
+  for (const r of rows) {
+    const e = J(r.meta, {}).entity;
+    if (!e?.team_size) continue;
+    const c = q.get(`SELECT c.id FROM companies c JOIN events ev ON ev.company_id = c.id WHERE ev.url = ? AND c.team IS NULL LIMIT 1`, r.url);
+    if (!c) continue;
+    saveTeam(c.id, { min: e.team_size, max: e.team_size, exact: true, source: 'yc', url: r.url, evidence: `Team size listed on Y Combinator (${e.batch})` });
+    n++;
+  }
+  if (n) log('people', `Backfilled team size for ${n} YC companies`);
+}
+
 export function startProcessor() {
+  backfillYcTeams();
   q.run(`UPDATE raw_items SET status='new' WHERE status='processing'`);
   setInterval(processBatch, 4000);
   setInterval(enrichLoop, 15000);

@@ -11,6 +11,8 @@ import * as llm from './pipeline/llm.js';
 import { bus, recentActivity, log } from './bus.js';
 import { sha1, fmtUsdM } from './util/text.js';
 import { hostCooldowns } from './util/http.js';
+import { targetPlan, contactsOf, saveContacts, suppressContact } from './pipeline/people.js';
+import { findEmail, providerStatus } from './pipeline/email-finders.js';
 
 export const api = express.Router();
 const wrap = (fn) => (req, res) => Promise.resolve().then(() => fn(req, res)).catch((e) => res.status(400).json({ error: e.message }));
@@ -25,8 +27,19 @@ function eventView(e) {
   };
 }
 
+function contactView(ct, primaryId) {
+  return {
+    id: ct.id, name: ct.name, role: ct.role, email: ct.email, emailStatus: ct.email_status, emailSource: ct.email_source, emailCheckedAt: ct.email_checked_at,
+    linkedin: ct.linkedin, source: ct.source, sourceUrl: ct.source_url, evidence: ct.evidence, dnc: Boolean(ct.do_not_contact),
+    primary: ct.id === primaryId, addedAt: ct.created_at,
+  };
+}
+
 function companyView(c, events, checkpoint) {
   const ev = events || q.all(`SELECT e.*, s.name source_name FROM events e LEFT JOIN sources s ON s.id = e.source_id WHERE company_id = ? ORDER BY occurred_at DESC`, c.id);
+  const contacts = contactsOf(c.id);
+  const plan = targetPlan(c, contacts);
+  const primary = contacts.find((x) => x.id === plan.primaryId);
   const funding = ev.find((e) => e.type === 'funding') || ev.find((e) => e.type === 'directory');
   const signals = [...new Set(ev.flatMap((e) => J(e.signals, [])))].slice(0, 6);
   const enr = J(c.enrichment, null);
@@ -43,8 +56,17 @@ function companyView(c, events, checkpoint) {
     eventCount: ev.length,
     corroborations: ev.reduce((s, e) => s + (e.corroborations || 1), 0),
     badge: checkpoint ? (c.first_seen_at > checkpoint ? 'new' : c.last_event_at > checkpoint ? 'updated' : null) : null,
+    team: plan.team ? { label: plan.team.label, n: plan.team.n, exact: plan.team.exact, source: plan.team.source, evidence: plan.team.evidence, url: plan.team.url } : null,
+    target: { roles: plan.roles, reason: plan.reason },
+    contact: primary ? { name: primary.name, role: primary.role, hasEmail: Boolean(primary.email) } : null,
+    peopleCount: contacts.filter((x) => !x.do_not_contact).length,
+    openRoles: enr?.openRoles || null,
+    _contacts: contacts,
+    _primaryId: plan.primaryId,
   };
 }
+
+const publicView = ({ _contacts, _primaryId, ...v }) => v;
 
 function eventsFor(ids) {
   if (!ids.length) return new Map();
@@ -108,7 +130,7 @@ api.get('/brief', wrap((req, res) => {
     checkpoint,
     totalNew: cands.filter((c) => c.first_seen_at > checkpoint).length,
     totalUpdated: cands.filter((c) => c.first_seen_at <= checkpoint).length,
-    leads: picks.map(({ c, explore }) => ({ ...companyView(c, evs.get(c.id) || [], checkpoint), explore })),
+    leads: picks.map(({ c, explore }) => ({ ...publicView(companyView(c, evs.get(c.id) || [], checkpoint)), explore })),
     intel,
   });
 }));
@@ -151,19 +173,21 @@ api.get('/leads', wrap((req, res) => {
   const rows = q.all(`SELECT c.* ${sql} ORDER BY ${order} LIMIT ? OFFSET ?`, ...p, limit, offset);
   const evs = eventsFor(rows.map((r) => r.id));
   const checkpoint = getSetting('brief_checkpoint', null);
-  res.json({ total, leads: rows.map((c) => companyView(c, evs.get(c.id) || [], checkpoint)) });
+  res.json({ total, leads: rows.map((c) => publicView(companyView(c, evs.get(c.id) || [], checkpoint))) });
 }));
 
 api.get('/leads.csv', wrap((req, res) => {
   const { sql, p, order } = leadQuery(req.query);
   const rows = q.all(`SELECT c.* ${sql} ORDER BY ${order} LIMIT 5000`, ...p);
   const evs = eventsFor(rows.map((r) => r.id));
-  const cols = ['name', 'score', 'sector', 'city', 'website', 'status', 'stage', 'amount', 'funding_date', 'markets', 'signals', 'payment_stack', 'why', 'pitch', 'source_url'];
+  const cols = ['name', 'score', 'sector', 'city', 'website', 'status', 'stage', 'amount', 'funding_date', 'team_size', 'contact_name', 'contact_role', 'contact_email', 'email_status', 'reach_out_to', 'markets', 'signals', 'payment_stack', 'why', 'pitch', 'source_url'];
   const esc = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
   const lines = [cols.join(',')];
   for (const c of rows) {
     const v = companyView(c, evs.get(c.id) || []);
-    lines.push([v.name, v.score, v.sector, v.city, v.website, v.status, v.funding?.stage, v.funding?.amount, v.funding?.date?.slice(0, 10), v.markets.join('; '), v.signals.join('; '), v.enrichment?.providers?.join('; '), v.why, v.pitch, v.latest?.url].map(esc).join(','));
+    const pc = v._contacts.find((x) => x.id === v._primaryId);
+    lines.push([v.name, v.score, v.sector, v.city, v.website, v.status, v.funding?.stage, v.funding?.amount, v.funding?.date?.slice(0, 10),
+      v.team ? `${v.team.label}${v.team.exact ? '' : ' (est.)'}` : '', pc?.name, pc?.role, pc?.email, pc?.email_status, v.target.roles.join(' / '), v.markets.join('; '), v.signals.join('; '), v.enrichment?.providers?.join('; '), v.why, v.pitch, v.latest?.url].map(esc).join(','));
   }
   res.setHeader('content-type', 'text/csv; charset=utf-8');
   res.setHeader('content-disposition', `attachment; filename="payglocal-leads-${new Date().toISOString().slice(0, 10)}.csv"`);
@@ -175,7 +199,54 @@ api.get('/leads/:id', wrap((req, res) => {
   if (!c) return res.status(404).json({ error: 'Not found' });
   const events = q.all(`SELECT e.*, s.name source_name FROM events e LEFT JOIN sources s ON s.id = e.source_id WHERE company_id = ? ORDER BY occurred_at DESC`, c.id);
   if (!c.seen_at) q.run('UPDATE companies SET seen_at = ? WHERE id = ?', nowIso(), c.id);
-  res.json({ ...companyView(c, events), events: events.map(eventView) });
+  const v = companyView(c, events);
+  const enr = J(c.enrichment, null);
+  res.json({
+    ...publicView(v),
+    events: events.map(eventView),
+    contacts: v._contacts.map((x) => contactView(x, v._primaryId)),
+    inboxes: enr?.emails || [],
+    emailProviders: providerStatus(),
+  });
+}));
+
+// ---------- contacts ----------
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i;
+
+api.post('/leads/:id/contacts', wrap((req, res) => {
+  const c = q.get('SELECT * FROM companies WHERE id = ?', req.params.id);
+  if (!c) return res.status(404).json({ error: 'Not found' });
+  const { name, role, email } = req.body || {};
+  if (!name || String(name).trim().split(/\s+/).length < 2) throw new Error('Full name (first and last) is required');
+  if (email && !EMAIL_RE.test(email)) throw new Error('That email address does not look valid');
+  const added = saveContacts(c.id, [{ name, role, evidence: 'Added manually' }], { source: 'manual', confidence: 1 });
+  if (!added) throw new Error('This person is already listed (or was removed and suppressed)');
+  const ct = q.get('SELECT id FROM contacts WHERE company_id = ? ORDER BY id DESC LIMIT 1', c.id);
+  if (email) q.run(`UPDATE contacts SET email = ?, email_status = 'manual', email_source = 'manual', email_checked_at = ? WHERE id = ?`, email.trim(), nowIso(), ct.id);
+  res.json({ ok: true, id: ct.id });
+}));
+
+api.patch('/contacts/:id', wrap((req, res) => {
+  const ct = q.get('SELECT * FROM contacts WHERE id = ?', req.params.id);
+  if (!ct) return res.status(404).json({ error: 'Not found' });
+  const { dnc, role } = req.body || {};
+  if (typeof dnc === 'boolean') q.run('UPDATE contacts SET do_not_contact = ?, updated_at = ? WHERE id = ?', dnc ? 1 : 0, nowIso(), ct.id);
+  if (typeof role === 'string') q.run('UPDATE contacts SET role = ?, updated_at = ? WHERE id = ?', role.trim().slice(0, 80) || null, nowIso(), ct.id);
+  res.json({ ok: true });
+}));
+
+// Erasure: delete the row and suppress the person so research never re-adds them.
+api.delete('/contacts/:id', wrap((req, res) => {
+  const ct = q.get('SELECT * FROM contacts WHERE id = ?', req.params.id);
+  if (!ct) return res.status(404).json({ error: 'Not found' });
+  suppressContact(ct.company_id, ct.norm_name);
+  q.run('DELETE FROM contacts WHERE id = ?', ct.id);
+  log('people', `Removed and suppressed a contact at company #${ct.company_id}`);
+  res.json({ ok: true });
+}));
+
+api.post('/contacts/:id/find-email', wrap(async (req, res) => {
+  res.json(await findEmail(Number(req.params.id)));
 }));
 
 api.patch('/leads/:id', wrap((req, res) => {

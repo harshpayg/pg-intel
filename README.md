@@ -42,10 +42,28 @@ Agent (every 2h): new queries, retire dead ones, tune cadence by yield ◄──
   - "so what" notes on intel items
   - tailored outreach angles
 
+## Decision makers
+
+For every lead the engine works out how big the company is and who to contact, and the lead drawer lists those people.
+
+- **Team size**, best source wins: Apollo or Y Combinator (exact), then a headcount stated on the company site or in an article ("a 40-member team"), then a range estimated from the funding stage (labelled as an estimate).
+- **Who to contact**, by size (thresholds in Config):
+  - Up to 50 people: founder or CEO (plus the CTO for SaaS, AI and IT companies).
+  - Up to 200: head of finance or payments.
+  - Larger: CFO or treasury.
+  - Exporters and manufacturers: the managing director or promoter.
+- **People** come from the news item itself, the full funding article, the company's About/Team pages and its site metadata. Gemini reads them when a key is set; otherwise a rule extractor does, which skips investors and people from other companies.
+- **Hiring**: open roles are read from public Greenhouse, Lever and Ashby job boards. Roles that point abroad (for example "US Sales") add a hiring signal to the lead.
+- **Emails**: "Find verified email" uses Apollo or Hunter if `APOLLO_API_KEY` or `HUNTER_API_KEY` is set. Only verified addresses are stored; accept-all domains are kept and marked risky. Lookups have a monthly cap and are off for automatic use unless you set "Auto-find email at score" in Config.
+- **LinkedIn**: we never scrape it. Each person and each target role gets a LinkedIn search link that the rep clicks.
+
 ## Guardrails
 
 - Rate limits are applied per host and robots-friendly pacing is used. If a host returns 429, its sources are rescheduled rather than marked as failed.
-- No LinkedIn scraping. Only business data is stored; enrichment keeps role inboxes only (sales@, hello@) and never personal contacts.
+- No LinkedIn scraping, no guessed emails, no mail-server probing, no personal phone numbers.
+- Contacts are limited to name, role and work email. Every person keeps the source link and quote they came from.
+- "Do not contact" blocks lookups and suggestions for a person. Deleting a person also suppresses them, so research never adds them back.
+- Under the DPDP Act, the exemption covers data the person published themselves or data published under a legal obligation (such as company registry records). Have compliance review the outreach process before using contacts at scale.
 - API keys stay server-side in `.env` and never reach the browser.
 
 ## Tests
@@ -54,7 +72,7 @@ There are no automated tests yet.
 
 ## API
 
-`GET /api/brief`, `POST /api/brief/ack`, `GET /api/leads?q&sector&stage&minScore&status&days&intl&sort`, `GET /api/leads/:id`, `PATCH /api/leads/:id {status,notes,feedback}`, `POST /api/leads/:id/enrich`, `POST /api/leads/:id/lookalike`, `GET /api/leads.csv`, `GET /api/intel`, `GET|POST|PATCH|DELETE /api/sources`, `POST /api/scan`, `POST /api/agent/run`, `GET|PUT /api/config`, `POST /api/config/preview`, `GET /api/stream` (SSE).
+`GET /api/brief`, `POST /api/brief/ack`, `GET /api/leads?q&sector&stage&minScore&status&days&intl&sort`, `GET /api/leads/:id`, `PATCH /api/leads/:id {status,notes,feedback}`, `POST /api/leads/:id/enrich`, `POST /api/leads/:id/lookalike`, `POST /api/leads/:id/contacts`, `PATCH|DELETE /api/contacts/:id`, `POST /api/contacts/:id/find-email`, `GET /api/leads.csv`, `GET /api/intel`, `GET|POST|PATCH|DELETE /api/sources`, `POST /api/scan`, `POST /api/agent/run`, `GET|PUT /api/config`, `POST /api/config/preview`, `GET /api/stream` (SSE).
 
 The original single-file prototype is in `legacy/`.
 

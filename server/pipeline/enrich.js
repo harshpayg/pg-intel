@@ -4,6 +4,7 @@ import { fetchText } from '../util/http.js';
 import { domainOf, normName, clip, fmtUsdM } from '../util/text.js';
 import * as llm from './llm.js';
 import { log } from '../bus.js';
+import { researchPeople } from './people.js';
 
 const PROVIDERS = [
   ['Stripe', /js\.stripe\.com|checkout\.stripe\.com|buy\.stripe\.com|stripe\.com\/v3/i],
@@ -139,8 +140,9 @@ export async function enrichCompany(id) {
   if (!c) return null;
   const events = q.all('SELECT * FROM events WHERE company_id = ? ORDER BY occurred_at DESC', id);
   let enr = { checkedAt: nowIso(), found: false };
+  let site = null;
   try {
-    const site = await findWebsite(c);
+    site = await findWebsite(c);
     if (site) {
       const a = analyse(site.html, site.url);
       enr = { ...enr, found: true, url: site.url, domain: domainOf(site.url), ...a };
@@ -157,6 +159,14 @@ export async function enrichCompany(id) {
     }
   } catch (e) {
     enr.error = e.message;
+  }
+
+  // Decision makers, team size and open roles (article + about/team pages + job boards).
+  try {
+    const people = await researchPeople(id, { siteHtml: site?.html, siteUrl: site?.url });
+    if (people?.openRoles) enr.openRoles = people.openRoles;
+  } catch (e) {
+    log('error', `People research for ${c.name}: ${e.message}`);
   }
 
   let pitch = null;
