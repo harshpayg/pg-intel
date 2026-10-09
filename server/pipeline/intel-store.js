@@ -23,7 +23,7 @@ export function saveIntel(intel, item, source, rawId) {
 }
 
 // One-off: re-judge everything already stored with the current classifiers. Bump RULES_VERSION when they change.
-const RULES_VERSION = 3;
+const RULES_VERSION = 5;
 export function rebuildIntel() {
   if (getSetting('intelRulesVersion', 1) >= RULES_VERSION) return;
   const kept = new Map(q.all(`SELECT url, status FROM intel WHERE status != 'new'`).map((r) => [r.url, r.status]));

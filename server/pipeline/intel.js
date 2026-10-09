@@ -134,6 +134,8 @@ const R_INTENTS = [
   { id: 'setup', label: 'Setting up collections', re: /\b(how (do|can|should) (i|we)|how to|set ?up|start accepting|integrate|onboard\w*|first international|payment gateway for|accept international (cards|payments))\b/i,
     angle: `Give a short setup checklist for their case (entity, current account, gateway or PA-CB, FIRA, LUT). ${DISCLOSE}` },
 ];
+const PROVIDER_NAMES = { paypal: 'PayPal', payoneer: 'Payoneer', wise: 'Wise', stripe: 'Stripe', skydo: 'Skydo', xflow: 'Xflow', briskpe: 'Briskpe', razorpay: 'Razorpay', cashfree: 'Cashfree', payu: 'PayU', 'dodo payments': 'Dodo Payments', 'dodopayments': 'Dodo Payments', paddle: 'Paddle', 'lemon squeezy': 'Lemon Squeezy', lemonsqueezy: 'Lemon Squeezy', airwallex: 'Airwallex', whop: 'Whop', gumroad: 'Gumroad', instamojo: 'Instamojo', ccavenue: 'CCAvenue' };
+export const providerName = (p) => PROVIDER_NAMES[p] || p;
 const PROVIDER_COMPLAINT = { id: 'provider-complaint', label: 'Unhappy with current provider' };
 
 // The plan's four groups, each with its product fit.
@@ -189,10 +191,10 @@ export function classifyReddit(item, source) {
     [ids.has('switching'), 25, 'seeking a provider or alternative'],
     // Someone in India receiving money from abroad is a service exporter even without saying "business".
     [business || receive, 20, 'India-based business or exporter'],
-    [ids.has('blocked') || ids.has('fees') || ids.has('compliance') || R_PROBLEM.test(focus), 20, 'specific payment / FX problem'],
-    [receive || R_REVENUE_ABROAD.test(t), 15, 'customers or revenue abroad'],
-    [unhappy, 10, `unhappy with ${providers.slice(0, 2).join(', ')}`],
-    [R_URGENT.test(t), 10, 'urgent or launching soon'],
+    [ids.has('blocked') || ids.has('fees') || ids.has('compliance') || R_PROBLEM.test(focus), 20, 'Specific payment or FX problem'],
+    [receive || R_REVENUE_ABROAD.test(t), 15, 'Customers or revenue abroad'],
+    [unhappy, 10, unhappy ? `Unhappy with ${providers.slice(0, 2).map(providerName).join(', ')}` : 'Unhappy with current provider'],
+    [R_URGENT.test(t), 10, 'Urgent or launching soon'],
   ];
   let score = parts.reduce((n, [on, pts]) => n + (on ? pts : 0), 0);
   const ageDays = item.published_at ? (Date.now() - new Date(item.published_at).getTime()) / 86400000 : 0;
@@ -219,6 +221,7 @@ export function classifyReddit(item, source) {
       intents: [...intents.map((x) => x.id), ...(unhappy ? [PROVIDER_COMPLAINT.id] : [])],
       providers, unhappy, restricted, band: band.id,
       signals: parts.filter(([on]) => on).map(([, , label]) => label),
+      parts: parts.map(([on, pts, label]) => ({ label, pts, on: !!on })),
       comments: Number(item.meta?.comments) || null,
     },
   };

@@ -36,7 +36,7 @@ const ago = (iso) => {
 const fmtDate = (iso) => (iso ? new Date(iso).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : '');
 const avatar = (l) => `<div class="avatar">${l.logo ? `<img src="${esc(safeUrl(l.logo))}" alt="" loading="lazy" onerror="this.remove()">` : ''}${l.logo ? '' : esc(initials(l.name))}</div>`;
 
-const state = { view: 'brief', threshold: 60, stats: null, leadsOffset: 0, intelCat: '', rd: { status: 'open', band: '', segment: '', intent: '' }, config: null, pendingLeads: 0 };
+const state = { view: 'brief', threshold: 60, stats: null, leadsOffset: 0, config: null, pendingLeads: 0 };
 
 // ---------- routing ----------
 const VIEWS = ['brief', 'leads', 'intel', 'reddit', 'live', 'sources', 'config'];
@@ -116,16 +116,15 @@ async function loadBrief() {
   state.pendingLeads = 0;
   const first = b.checkpoint.startsWith('1970');
   $('#briefEyebrow').textContent = first ? 'First brief' : `Since ${new Date(b.checkpoint).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}`;
-  $('#briefTitle').textContent = b.totalNew + b.totalUpdated ? `${b.totalNew} new companies, ${b.totalUpdated} with fresh signals` : "You're all caught up";
+  $('#briefTitle').textContent = b.totalNew + b.totalUpdated ? `${b.totalNew} new companies` : "You're all caught up";
   $('#briefCount').textContent = b.leads.length ? `Showing ${b.leads.length}, ranked, with ${b.leads.filter((l) => l.explore).length} exploration picks` : '';
   $('#briefLeads').innerHTML = b.leads.length ? b.leads.map(leadCard).join('') : `<div class="empty"><strong>Nothing new since your last check.</strong>The engine keeps scanning. New funding, expansion and payment-pain signals will appear here automatically.</div>`;
   bindLeadClicks($('#briefLeads'));
-  $('#briefIntel').innerHTML = (b.redditHot ? `<div class="it"><a href="#reddit">${b.redditHot} hot Reddit thread${b.redditHot > 1 ? 's' : ''} to answer</a><p>Indian businesses asking how to get paid from abroad.</p></div>` : '')
+  $('#briefIntel').innerHTML = (b.redditHot ? `<div class="it"><a href="#reddit">${b.redditHot} high-priority Reddit thread${b.redditHot > 1 ? 's' : ''} to answer</a><p>Indian businesses asking how to get paid from abroad (score 80+).</p></div>` : '')
     + (b.intel.length ? b.intel.slice(0, 6).map(intelMini).join('') : '<div class="muted small">No new intel since last check.</div>');
 }
 
-const impDots = (n) => `<span class="imp" title="Importance ${n}/3">${[1, 2, 3].map((i) => `<i class="${i <= n ? 'on' : ''}"></i>`).join('')}</span>`;
-const intelMini = (i) => `<div class="it">${impDots(i.importance)}<span class="cat ${i.category}">${esc(i.category)}</span><div><a href="${esc(safeUrl(i.url))}" target="_blank" rel="noopener">${esc(i.title)}</a></div>${i.so_what ? `<p>${esc(i.so_what)}</p>` : ''}</div>`;
+const intelMini = (i) => `<div class="it"><span class="cat ${i.category}">${esc(CAT_LABEL[i.category] || i.category)}</span>${i.importance >= 3 ? ' <span class="badge-act">Act now</span>' : ''}<div><a href="${esc(safeUrl(i.url))}" target="_blank" rel="noopener">${esc(i.title)}</a></div>${i.so_what ? `<p>${esc(i.so_what)}</p>` : ''}</div>`;
 
 $('#ackBrief').onclick = async () => {
   await api('/brief/ack', { method: 'POST' });
@@ -334,74 +333,249 @@ document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeDrawe
 
 // ---------- intel ----------
 const CAT_LABEL = { regulatory: 'Regulatory', competitor: 'Competitor', market: 'Market', payglocal: 'PayGlocal' };
-async function loadIntel() {
-  const r = await api(`/intel${state.intelCat ? `?category=${state.intelCat}` : ''}`);
-  const counts = Object.fromEntries(r.counts.map((c) => [c.category, c.n]));
-  const total = r.counts.reduce((s, c) => s + c.n, 0);
-  const cats = [['', 'All', total], ['regulatory', 'Regulatory', counts.regulatory], ['competitor', 'Competitors', counts.competitor], ['market', 'Market', counts.market], ['payglocal', 'PayGlocal in news', counts.payglocal]];
-  $('#intelTabs').innerHTML = cats.map(([k, l, n]) => `<button class="chipbtn ${state.intelCat === k ? 'active' : ''}" data-k="${k}">${l} ${n ? `· ${n}` : ''}</button>`).join('');
-  $$('#intelTabs button').forEach((b) => (b.onclick = () => { state.intelCat = b.dataset.k; loadIntel(); }));
-  $('#intelList').innerHTML = r.items.length ? r.items.map((i) => `<article class="intel-card">
-    <div>${impDots(i.importance)}<span class="cat ${i.category}">${esc(CAT_LABEL[i.category] || i.category)}</span> <span class="muted small">· ${esc(i.source_name || '')} · ${ago(i.published_at || i.created_at)}${i.coverage > 1 ? ` · ${i.coverage} outlets` : ''}</span></div>
-    <h4><a href="${esc(safeUrl(i.url))}" target="_blank" rel="noopener">${esc(i.title)}</a></h4>
-    ${i.summary ? `<p>${esc(i.summary.slice(0, 260))}</p>` : ''}
-    ${i.so_what ? `<div class="so-what"><b>So what:</b> ${esc(i.so_what)}</div>` : ''}
-  </article>`).join('') : '<div class="empty"><strong>Nothing relevant yet.</strong>RBI, competitor and market feeds are scanned on a schedule; only items with a clear PayGlocal angle land here.</div>';
+const TOPIC_LABEL = {
+  'policy-statement': 'RBI policy', 'pa-rules': 'PA / PA-CB rules', 'export-realisation': 'FEMA & export realisation', 'freelancer-inflows': 'Freelancer inflows',
+  remittance: 'Remittances', 'kyc-data': 'KYC, AML & data', 'export-incentives': 'Export incentives', 'trade-corridor': 'Trade corridors', 'upi-global': 'UPI abroad',
+  cards: 'Card acceptance', 'gift-city': 'GIFT City', 'export-data': 'Export data', 'xb-payments': 'Cross-border rails', competitor: 'Competitor moves', payglocal: 'PayGlocal coverage',
+};
+const intelState = { items: [], cat: '', topic: '', q: '', range: '30', act: false };
+const whenOf = (i) => i.published_at || i.created_at;
+const topicOf = (i) => i.meta?.topic || (i.category === 'competitor' ? 'competitor' : i.category === 'payglocal' ? 'payglocal' : null);
+
+// Buckets read better than one header per day when items are spread over weeks.
+function dayBucket(iso) {
+  const d = new Date(iso), now = new Date();
+  const days = Math.floor((new Date(now.toDateString()) - new Date(d.toDateString())) / 86400000);
+  return days <= 0 ? 'Today' : days === 1 ? 'Yesterday' : days < 7 ? 'Earlier this week' : days < 30 ? 'Earlier this month' : 'Older';
 }
+
+async function loadIntel() {
+  const r = await api('/intel');
+  intelState.items = r.items;
+  const latest = r.items[0];
+  $('#intelMeta').textContent = latest ? `Latest item ${ago(whenOf(latest))}` : '';
+  renderIntel();
+}
+
+function renderIntel() {
+  const f = intelState;
+  const q = f.q.trim().toLowerCase();
+  const cutoff = f.range ? Date.now() - Number(f.range) * 86400000 : 0;
+  const inRange = f.items.filter((i) => new Date(whenOf(i)).getTime() >= cutoff && (!f.act || i.importance >= 3) && (!q || `${i.title} ${i.so_what}`.toLowerCase().includes(q)));
+  const count = (cat) => inRange.filter((i) => !cat || i.category === cat).length;
+  $('#intelSeg').innerHTML = [['', 'All'], ['regulatory', 'Regulatory'], ['competitor', 'Competitors'], ['market', 'Market'], ['payglocal', 'PayGlocal']]
+    .map(([k, l]) => `<button role="tab" aria-selected="${f.cat === k}" class="${f.cat === k ? 'on' : ''}" data-k="${k}">${l}<span class="n">${count(k)}</span></button>`).join('');
+  $$('#intelSeg button').forEach((b) => (b.onclick = () => { f.cat = b.dataset.k; f.topic = ''; renderIntel(); }));
+
+  const inCat = inRange.filter((i) => !f.cat || i.category === f.cat);
+  const topics = Object.entries(inCat.reduce((m, i) => { const t = topicOf(i); if (t) m[t] = (m[t] || 0) + 1; return m; }, {})).sort((a, b) => b[1] - a[1]);
+  $('#intelTopics').innerHTML = topics.length
+    ? topics.map(([t, n]) => `<button class="topic ${f.topic === t ? 'on' : ''}" data-t="${esc(t)}"><span>${esc(TOPIC_LABEL[t] || t)}</span><span class="n">${n}</span></button>`).join('')
+      + (f.topic ? '<button class="topic clear" data-t="">Clear topic</button>' : '')
+    : '<div class="muted small">No topics in this range.</div>';
+  $$('#intelTopics .topic').forEach((b) => (b.onclick = () => { f.topic = f.topic === b.dataset.t ? '' : b.dataset.t; renderIntel(); }));
+
+  const items = inCat.filter((i) => !f.topic || topicOf(i) === f.topic);
+  if (!items.length) {
+    $('#intelList').innerHTML = `<div class="empty"><strong>${f.items.length ? 'Nothing matches these filters.' : 'Nothing relevant yet.'}</strong>${f.items.length ? 'Try a longer time range or clear the topic.' : 'RBI, competitor and market feeds are scanned on a schedule; only items with a clear PayGlocal angle land here.'}</div>`;
+    return;
+  }
+  const groups = [];
+  for (const i of items) {
+    const b = dayBucket(whenOf(i));
+    if (groups.at(-1)?.label !== b) groups.push({ label: b, items: [] });
+    groups.at(-1).items.push(i);
+  }
+  $('#intelList').innerHTML = groups.map((g) => `<section class="day"><h2 class="day-label">${g.label}<span>${g.items.length}</span></h2><div class="feed-card">${g.items.map(intelRow).join('')}</div></section>`).join('');
+}
+
+function intelRow(i) {
+  const t = topicOf(i);
+  const meta = [t && TOPIC_LABEL[t], i.source_id?.startsWith('rbi') ? 'RBI' : null, ago(whenOf(i)), i.coverage > 1 ? `${i.coverage} outlets` : null].filter(Boolean);
+  return `<article class="fi">
+    <span class="fi-cat ${i.category}">${esc(CAT_LABEL[i.category] || i.category)}</span>
+    <div class="fi-body">
+      <a class="fi-title" href="${esc(safeUrl(i.url))}" target="_blank" rel="noopener">${esc(i.title)}</a>
+      ${i.so_what ? `<p class="fi-so">${esc(i.so_what)}</p>` : ''}
+      <div class="fi-meta">${meta.map(esc).join('<i>·</i>')}</div>
+    </div>
+    <div class="fi-side">${i.importance >= 3 ? '<span class="badge-act">Act now</span>' : ''}</div>
+  </article>`;
+}
+
+$('#intelQ').addEventListener('input', (e) => { intelState.q = e.target.value; renderIntel(); });
+$('#intelRange').addEventListener('change', (e) => { intelState.range = e.target.value; renderIntel(); });
+$('#intelAct').addEventListener('change', (e) => { intelState.act = e.target.checked; renderIntel(); });
 
 // ---------- reddit ----------
-const RD_STATUS = [['open', 'Open'], ['replied', 'Replied'], ['lead', 'Sales lead'], ['ignored', 'Ignored'], ['all', 'All']];
+// Triage inbox: list on the left, the selected thread on the right. Filters run client-side so they are instant.
+const rd = { mode: 'inbox', items: [], status: 'open', band: '', segment: '', intent: '', q: '', sel: null, meta: null };
+const RD_STATUS = [['open', 'Open'], ['lead', 'Sales leads'], ['replied', 'Replied'], ['ignored', 'Ignored']];
+const RD_ACTIONS = [['replied', 'Mark replied', 'R'], ['lead', 'Sales lead', 'L'], ['ignored', 'Ignore', 'I']];
+const rdStatusOf = (i) => (i.status === 'new' ? 'open' : i.status);
+const BAND_RANK = { high: 0, research: 1, monitor: 2 };
+const PROVIDER = { paypal: 'PayPal', payoneer: 'Payoneer', wise: 'Wise', stripe: 'Stripe', skydo: 'Skydo', xflow: 'Xflow', razorpay: 'Razorpay', cashfree: 'Cashfree', payu: 'PayU', 'dodo payments': 'Dodo Payments', paddle: 'Paddle', 'lemon squeezy': 'Lemon Squeezy', airwallex: 'Airwallex', whop: 'Whop', ccavenue: 'CCAvenue' };
+const providerName = (p) => PROVIDER[p] || p.replace(/\b\w/g, (c) => c.toUpperCase());
+const sourceLabel = (sub) => (sub ? `r/${sub}` : 'Keyword search');
+const capFirst = (x) => String(x || '').replace(/^\w/, (c) => c.toUpperCase());
+
 async function loadReddit() {
-  const f = state.rd;
-  const qs = new URLSearchParams({ status: f.status, ...(f.band && { band: f.band }), ...(f.segment && { segment: f.segment }), ...(f.intent && { intent: f.intent }) });
-  const [r, rep] = await Promise.all([api(`/reddit?${qs}`), api('/reddit/report')]);
-  renderRedditReport(rep, r);
-  const chip = (group, k, label, n, active) => `<button class="chipbtn ${active ? 'active' : ''}" data-g="${group}" data-k="${esc(k)}">${esc(label)}${n ? ` · ${n}` : ''}</button>`;
-  const stN = { ...r.status, open: r.status.new, all: Object.values(r.status).reduce((a, b) => a + b, 0) };
-  $('#rdStatus').innerHTML = RD_STATUS.map(([k, l]) => chip('status', k, l, stN[k], f.status === k)).join('');
-  $('#rdBands').innerHTML = chip('band', '', 'Any score', 0, !f.band) + r.bands.map((x) => chip('band', x.id, `${x.label} (${x.min ? `${x.min}+` : '<50'})`, 0, f.band === x.id)).join('');
-  $('#rdSegments').innerHTML = chip('segment', '', 'All segments', 0, !f.segment) + r.segments.map((x) => chip('segment', x.id, x.label, r.facets.segment[x.id], f.segment === x.id)).join('');
-  $('#rdIntents').innerHTML = chip('intent', '', 'Any intent', 0, !f.intent) + r.intents.map((x) => chip('intent', x.id, x.label, r.facets.intent[x.id], f.intent === x.id)).join('');
-  $$('#view-reddit .chips-row button').forEach((b) => (b.onclick = () => { f[b.dataset.g] = b.dataset.k; loadReddit(); }));
-  $('#rdList').innerHTML = r.items.length ? r.items.map(redditCard).join('') : '<div class="empty"><strong>No threads match.</strong>Reddit is scanned every few hours; consumer questions, jobs and off-topic posts are filtered out.</div>';
-  $$('#rdList [data-st]').forEach((b) => (b.onclick = async () => {
-    await api(`/reddit/${b.dataset.id}`, { method: 'PATCH', body: { status: b.dataset.st } });
-    toast(b.dataset.st === 'new' ? 'Moved back to open' : `Marked ${b.textContent.toLowerCase()}`);
+  $$('#rdMode button').forEach((b) => b.classList.toggle('on', b.dataset.mode === rd.mode));
+  $('#rdInbox').hidden = rd.mode !== 'inbox';
+  $('#rdInsights').hidden = rd.mode !== 'insights';
+  if (rd.mode === 'insights') return loadRedditInsights();
+  const r = await api('/reddit?status=all');
+  // Triage order: high priority first, then newest within each band.
+  rd.items = r.items.sort((a, b) => (BAND_RANK[a.band?.id] ?? 3) - (BAND_RANK[b.band?.id] ?? 3) || new Date(whenOf(b)) - new Date(whenOf(a)));
+  rd.meta = r;
+  renderRedditFilters();
+  renderReddit();
+}
+
+function rdFiltered(ignore) {
+  const q = rd.q.trim().toLowerCase();
+  return rd.items.filter((i) => (ignore === 'status' || rdStatusOf(i) === rd.status)
+    && (ignore === 'band' || !rd.band || i.band?.id === rd.band)
+    && (ignore === 'segment' || !rd.segment || i.meta.segment === rd.segment)
+    && (ignore === 'intent' || !rd.intent || (i.meta.intents || []).includes(rd.intent))
+    && (!q || `${i.title} ${i.summary || ''} ${i.meta.sub || ''}`.toLowerCase().includes(q)));
+}
+
+function renderRedditFilters() {
+  const m = rd.meta;
+  const n = (key, pred) => rdFiltered(key).filter(pred).length;
+  $('#rdStatus').innerHTML = RD_STATUS.map(([k, l]) => `<button role="tab" aria-selected="${rd.status === k}" class="${rd.status === k ? 'on' : ''}" data-k="${k}">${l}<span class="n">${n('status', (i) => rdStatusOf(i) === k)}</span></button>`).join('');
+  $$('#rdStatus button').forEach((b) => (b.onclick = () => { rd.status = b.dataset.k; rd.sel = null; renderRedditFilters(); renderReddit(); }));
+  const opts = (key, all, list, pred) => `<option value="">${all}</option>` + list.map((x) => `<option value="${esc(x.id)}" ${rd[key] === x.id ? 'selected' : ''}>${esc(x.label)} (${n(key, (i) => pred(i, x.id))})</option>`).join('');
+  $('#rdBand').innerHTML = opts('band', 'Any priority', m.bands.map((b) => ({ id: b.id, label: `${b.label} ${b.min ? `${b.min}+` : 'under 50'}` })), (i, id) => i.band?.id === id);
+  $('#rdSegment').innerHTML = opts('segment', 'All segments', m.segments, (i, id) => i.meta.segment === id);
+  $('#rdIntent').innerHTML = opts('intent', 'Any intent', m.intents, (i, id) => (i.meta.intents || []).includes(id));
+}
+
+function renderReddit() {
+  const items = rdFiltered();
+  if (!items.some((i) => i.id === rd.sel)) rd.sel = window.innerWidth > 900 ? items[0]?.id ?? null : null;
+  $('#rdList').innerHTML = items.length ? items.map((i) => {
+    const m = i.meta;
+    const meta = [sourceLabel(m.sub), ago(whenOf(i)).replace(' ago', ''), m.segmentLabel].filter(Boolean);
+    return `<button class="ib-row ${i.id === rd.sel ? 'sel' : ''}" role="option" aria-selected="${i.id === rd.sel}" data-id="${i.id}">
+      <span class="sc ${i.band?.id}" title="${esc(i.band?.label)}">${i.score ?? 0}</span>
+      <span class="ib-main"><span class="ib-title">${esc(i.title)}</span><span class="ib-meta">${meta.map(esc).join(' · ')}${m.restricted ? ' · <b class="is-neg">Restricted</b>' : ''}${m.comment ? ' · comment' : ''}</span></span>
+    </button>`;
+  }).join('') : `<div class="ib-empty"><strong>${rd.items.length ? 'No threads here.' : 'No threads yet.'}</strong><span>${rd.items.length ? 'Change the status or clear a filter.' : 'Reddit is scanned every few hours.'}</span></div>`;
+  $$('#rdList .ib-row').forEach((b) => (b.onclick = () => selectThread(Number(b.dataset.id))));
+  renderThread();
+}
+
+function selectThread(id) {
+  rd.sel = id;
+  $$('#rdList .ib-row').forEach((b) => { const on = Number(b.dataset.id) === id; b.classList.toggle('sel', on); b.setAttribute('aria-selected', on); if (on) b.scrollIntoView({ block: 'nearest' }); });
+  renderThread();
+}
+
+function renderThread() {
+  const i = rd.items.find((x) => x.id === rd.sel);
+  $('#rdBox').classList.toggle('detail-open', !!i);
+  if (!i) { $('#rdDetail').innerHTML = '<div class="ib-placeholder">Select a thread to see why it scored and how to reply.</div>'; return; }
+  const m = i.meta, b = i.band || {};
+  const parts = m.parts || (m.signals || []).map((label) => ({ label, on: true }));
+  const facts = [['Segment', m.segmentLabel], ['Product fit', m.fit], ['Providers mentioned', (m.providers || []).map(providerName).join(', ')], ['Source', `${sourceLabel(m.sub)}${m.comment ? ' (comment)' : ''}`]].filter(([, v]) => v);
+  const status = rdStatusOf(i);
+  $('#rdDetail').innerHTML = `
+    <button class="dt-back" data-act="back" aria-label="Back to list">← Threads</button>
+    <div class="dt-head">
+      <span class="sc lg ${b.id}">${i.score ?? 0}</span>
+      <div><div class="dt-band">${esc(b.label || '')}${status !== 'open' ? ` <span class="pill">${esc(RD_STATUS.find(([k]) => k === status)?.[1] || status)}</span>` : ''}</div><div class="muted small">${esc(b.action || '')}</div></div>
+    </div>
+    <h2 class="dt-title"><a href="${esc(safeUrl(i.url))}" target="_blank" rel="noopener">${esc(i.title)}</a></h2>
+    <div class="dt-meta">${m.sub ? `r/${esc(m.sub)} · ` : ''}posted ${ago(whenOf(i))}${m.comments ? ` · ${m.comments} comments` : ''}</div>
+    ${m.restricted ? `<div class="callout danger"><b>Restricted category: ${esc(m.restricted)}.</b> Do not pitch. Route to compliance before any outreach.</div>` : ''}
+    <div class="dt-actions">
+      <a class="btn small primary" href="${esc(safeUrl(i.url))}" target="_blank" rel="noopener">Open on Reddit <kbd>O</kbd></a>
+      ${RD_ACTIONS.filter(([k]) => k !== status).map(([k, l, key]) => `<button class="btn small" data-act="${k}">${l} <kbd>${key}</kbd></button>`).join('')}
+      ${status !== 'open' ? '<button class="btn small" data-act="new">Reopen <kbd>U</kbd></button>' : ''}
+    </div>
+    ${i.summary ? `<section class="dt-sec"><h3>What they wrote</h3><p class="dt-quote">${esc(i.summary.slice(0, 700))}${i.summary.length > 700 ? '…' : ''}</p></section>` : ''}
+    <section class="dt-sec"><div class="dt-sec-head"><h3>Suggested approach${m.intentLabel ? ` · ${esc(m.intentLabel)}` : ''}</h3><button class="link-btn" data-act="copy">Copy</button></div><p>${esc(i.so_what || '')}</p></section>
+    <section class="dt-sec"><h3>Why it scored ${i.score ?? 0}</h3><ul class="why">${parts.map((p) => `<li class="${p.on ? 'on' : ''}"><span class="ck" aria-hidden="true">${p.on ? '✓' : ''}</span><span>${esc(capFirst(p.label))}</span>${p.pts != null ? `<span class="pts">${p.on ? `+${p.pts}` : '0'}</span>` : ''}</li>`).join('')}</ul></section>
+    <section class="dt-sec"><dl class="dt-facts">${facts.map(([k, v]) => `<div><dt>${k}</dt><dd>${esc(v)}</dd></div>`).join('')}</dl></section>
+    <div class="kbd-hint"><kbd>J</kbd><kbd>K</kbd> move · <kbd>O</kbd> open · <kbd>R</kbd> replied · <kbd>L</kbd> sales lead · <kbd>I</kbd> ignore</div>`;
+  $$('#rdDetail [data-act]').forEach((el) => (el.onclick = () => threadAction(el.dataset.act)));
+}
+
+async function threadAction(act) {
+  const i = rd.items.find((x) => x.id === rd.sel);
+  if (!i) return;
+  if (act === 'back') { rd.sel = null; renderReddit(); return; }
+  if (act === 'copy') {
+    try { await navigator.clipboard.writeText(i.so_what || ''); toast('Approach copied'); } catch { toast('Copy failed: select the text instead'); }
+    return;
+  }
+  if (act === 'open') { window.open(safeUrl(i.url), '_blank', 'noopener'); return; }
+  const list = rdFiltered();
+  const idx = list.findIndex((x) => x.id === i.id);
+  const prev = i.status;
+  await api(`/reddit/${i.id}`, { method: 'PATCH', body: { status: act } });
+  i.status = act;
+  // Move on to the next thread so triage is one keystroke per item.
+  const next = list[idx + 1] || list[idx - 1];
+  rd.sel = rdFiltered().some((x) => x.id === i.id) ? i.id : next?.id ?? null;
+  renderRedditFilters();
+  renderReddit();
+  const label = { replied: 'Marked replied', lead: 'Marked as sales lead', ignored: 'Ignored', new: 'Moved back to open' }[act];
+  toast(label, act === 'new' ? null : { label: 'Undo', fn: async () => { await api(`/reddit/${i.id}`, { method: 'PATCH', body: { status: prev } }); i.status = prev; rd.sel = i.id; renderRedditFilters(); renderReddit(); } });
+}
+
+document.addEventListener('keydown', (e) => {
+  if (state.view !== 'reddit' || rd.mode !== 'inbox' || e.metaKey || e.ctrlKey || e.altKey) return;
+  if (/^(input|select|textarea)$/i.test(e.target.tagName) || $('#drawerWrap')?.classList.contains('open')) return;
+  const list = rdFiltered();
+  const idx = list.findIndex((x) => x.id === rd.sel);
+  const k = e.key.toLowerCase();
+  if (k === 'j' || e.key === 'ArrowDown') { const n = list[Math.min(list.length - 1, idx + 1)]; if (n) { e.preventDefault(); selectThread(n.id); } }
+  else if (k === 'k' || e.key === 'ArrowUp') { const n = list[Math.max(0, idx - 1)]; if (n) { e.preventDefault(); selectThread(n.id); } }
+  else if (rd.sel && { o: 'open', r: 'replied', l: 'lead', i: 'ignored', u: 'new' }[k]) { e.preventDefault(); threadAction({ o: 'open', r: 'replied', l: 'lead', i: 'ignored', u: 'new' }[k]); }
+});
+$('#rdQ').addEventListener('input', (e) => { rd.q = e.target.value; renderRedditFilters(); renderReddit(); });
+for (const k of ['band', 'segment', 'intent']) $(`#rd${k[0].toUpperCase()}${k.slice(1)}`).addEventListener('change', (e) => { rd[k] = e.target.value; renderRedditFilters(); renderReddit(); });
+$$('#rdMode button').forEach((b) => (b.onclick = () => { rd.mode = b.dataset.mode; loadReddit(); }));
+
+// Weekly voice-of-customer view: single-series bar lists, labels in ink, values beside each bar.
+async function loadRedditInsights() {
+  const [rep, r] = await Promise.all([api('/reddit/report'), rd.meta ? rd.meta : api('/reddit?status=all')]);
+  rd.meta = r;
+  const lbl = (list, id) => list.find((x) => x.id === id)?.label || (id === 'other' ? 'Other business' : capFirst(id));
+  const bars = (obj, label, filterKey) => {
+    const rows = Object.entries(obj || {}).sort((a, b) => b[1] - a[1]);
+    if (!rows.length) return '<div class="muted small">None this week.</div>';
+    const max = rows[0][1];
+    return `<div class="hb-list">${rows.map(([k, v]) => `<button class="hb-row" ${filterKey ? `data-f="${filterKey}" data-v="${esc(k)}"` : 'disabled'} title="${esc(label(k))}: ${v} thread${v === 1 ? '' : 's'}">
+      <span class="hb-label">${esc(label(k))}</span><span class="hb-track"><span class="hb-fill" style="width:${Math.max(4, (v / max) * 100)}%"></span></span><span class="hb-val">${v}</span></button>`).join('')}</div>`;
+  };
+  const sum = (k) => rep.subs.reduce((n, x) => n + x[k], 0);
+  const complaints = Object.fromEntries(Object.entries(rep.providers || {}).map(([p]) => [p, rep.complaints?.[p] || 0]));
+  $('#rdInsights').innerHTML = rep.total ? `
+    <div class="tiles">
+      <div class="tile"><div class="tile-label">Qualified threads</div><div class="tile-value">${rep.total}</div><div class="tile-sub">last 7 days</div></div>
+      <div class="tile"><div class="tile-label">High priority</div><div class="tile-value">${rep.bands.high || 0}</div><div class="tile-sub">score 80+</div></div>
+      <div class="tile"><div class="tile-label">Replied</div><div class="tile-value">${sum('replied')}</div><div class="tile-sub">of this week's threads</div></div>
+      <div class="tile"><div class="tile-label">Sales leads</div><div class="tile-value">${sum('lead')}</div><div class="tile-sub">${rep.restricted ? `${rep.restricted} restricted, held back` : 'flagged from Reddit'}</div></div>
+    </div>
+    <div class="ins-grid">
+      <div class="panel"><div class="panel-head"><h3>What they ask</h3><span class="muted small">Click to filter the inbox</span></div>${bars(rep.intents, (k) => lbl(r.intents, k), 'intent')}</div>
+      <div class="panel"><div class="panel-head"><h3>Who is asking</h3></div>${bars(rep.segments, (k) => lbl(r.segments, k), 'segment')}</div>
+      <div class="panel"><div class="panel-head"><h3>Product fit</h3><span class="muted small">MCA for transfers, IPG for card checkout</span></div>${bars(rep.fit, (k) => k)}</div>
+      <div class="panel"><div class="panel-head"><h3>Providers mentioned</h3><span class="muted small">Complaints in brackets</span></div>${bars(rep.providers, (k) => `${providerName(k)}${complaints[k] ? ` (${complaints[k]} unhappy)` : ''}`)}</div>
+    </div>
+    <div class="panel"><div class="panel-head"><h3>Yield by subreddit</h3><span class="muted small">Expand to new subreddits only where this produces 80+ threads and leads</span></div>
+      <div class="ytable"><div class="yr yh"><span>Source</span><span>Threads</span><span>80+</span><span>Replied</span><span>Leads</span></div>
+      ${rep.subs.map((x) => `<div class="yr"><span>${x.sub === 'search' ? 'Keyword searches' : esc(sourceLabel(x.sub))}</span><span>${x.posts}</span><span>${x.high}</span><span>${x.replied}</span><span>${x.lead}</span></div>`).join('')}</div>
+    </div>` : '<div class="empty"><strong>No Reddit threads in the last 7 days yet.</strong>Insights fill in as threads are scored.</div>';
+  $$('#rdInsights .hb-row[data-f]').forEach((b) => (b.onclick = () => {
+    Object.assign(rd, { mode: 'inbox', status: 'open', band: '', segment: '', intent: '', q: '', sel: null, [b.dataset.f]: b.dataset.v });
+    $('#rdQ').value = '';
     loadReddit();
   }));
-}
-
-// Weekly voice-of-customer summary (plan section 6) and yield by subreddit (plan section 5: measure qualified conversations).
-function renderRedditReport(rep, r) {
-  const label = (list, id) => list.find((x) => x.id === id)?.label || id;
-  const top = (obj, fmt, n = 4) => Object.entries(obj || {}).sort((a, b) => b[1] - a[1]).slice(0, n).map(([k, v]) => `${esc(fmt(k))} <b>${v}</b>`).join(' · ') || '<span class="muted">none yet</span>';
-  $('#rdReport').innerHTML = rep.total ? `<div class="panel-head"><h3>This week on Reddit</h3><span class="muted small">${rep.total} qualified threads · ${rep.bands.high || 0} high priority · ${rep.bands.research || 0} research${rep.restricted ? ` · ${rep.restricted} restricted` : ''}</span></div>
-    <div class="rd-rep-grid">
-      <div><div class="eyebrow">What they ask</div>${top(rep.intents, (k) => label(r.intents, k))}</div>
-      <div><div class="eyebrow">Who is asking</div>${top(rep.segments, (k) => label(r.segments, k))}</div>
-      <div><div class="eyebrow">Product fit</div>${top(rep.fit, (k) => k)}</div>
-      <div><div class="eyebrow">Provider complaints</div>${top(rep.complaints, (k) => k)}</div>
-      <div class="wide"><div class="eyebrow">Yield by subreddit (posts / 80+ / replied / leads)</div>${rep.subs.map((x) => `<span class="pill">${x.sub === 'search' ? 'keyword search' : `r/${esc(x.sub)}`} ${x.posts} / ${x.high} / ${x.replied} / ${x.lead}</span>`).join(' ')}</div>
-    </div>` : '<div class="muted small">No Reddit threads in the last 7 days yet.</div>';
-}
-
-function redditCard(i) {
-  const m = i.meta || {};
-  const sc = i.score || 0;
-  const band = i.band || {};
-  const acts = [['replied', 'Replied'], ['lead', 'Sales lead'], ['ignored', 'Ignore']].filter(([k]) => k !== i.status);
-  if (i.status !== 'new') acts.push(['new', 'Reopen']);
-  return `<article class="intel-card rd-card">
-    <div class="rd-top"><span class="rd-score ${band.id || ''}" title="${esc(band.label || '')}: ${esc(band.action || '')}">${sc}</span><span class="small"><b>${esc(band.label || '')}</b></span>
-      ${m.segmentLabel ? `<span class="tag">${esc(m.segmentLabel)}</span>` : ''}${m.fit ? `<span class="tag plain" title="Product fit">${esc(m.fit)}</span>` : ''}${m.restricted ? `<span class="tag danger" title="Route to compliance before any outreach">Restricted: ${esc(m.restricted)}</span>` : ''}
-      <span class="muted small">${m.comment ? 'comment · ' : ''}${m.sub ? `r/${esc(m.sub)} · ` : ''}${ago(i.published_at || i.created_at)}${m.comments ? ` · ${m.comments} comments` : ''}</span></div>
-    <h4><a href="${esc(safeUrl(i.url))}" target="_blank" rel="noopener">${esc(i.title)}</a></h4>
-    ${i.summary ? `<p>${esc(i.summary.slice(0, 280))}</p>` : ''}
-    ${(m.signals || []).length ? `<div class="tags">${m.signals.map((s) => `<span class="tag plain">${esc(s)}</span>`).join('')}</div>` : ''}
-    ${i.so_what ? `<div class="so-what"><b>${esc(m.intentLabel || 'Reply angle')}:</b> ${esc(i.so_what)}</div>` : ''}
-    ${band.id === 'research' ? `<div class="muted small rd-next">${esc(band.action)}</div>` : ''}
-    <div class="rd-actions"><a class="btn small primary" href="${esc(safeUrl(i.url))}" target="_blank" rel="noopener">Open thread</a>${acts.map(([k, l]) => `<button class="btn small" data-id="${i.id}" data-st="${k}">${l}</button>`).join('')}</div>
-  </article>`;
 }
 
 // ---------- live ----------

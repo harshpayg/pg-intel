@@ -90,20 +90,51 @@
 
   <!-- INTEL -->
   <section class="view" id="view-intel" hidden>
-    <div class="hero"><div><div class="eyebrow">Know the market</div><h1>Market intel</h1><p>Only what changes what PayGlocal does: RBI and FEMA rules, competitor moves, export corridors and PayGlocal in the news. Repeat coverage is folded into one card.</p></div></div>
-    <div class="chips-row" id="intelTabs"></div>
-    <div class="intel-list" id="intelList"></div>
+    <div class="page-head">
+      <div><h1>Market intel</h1><p>Rules, competitor moves and export trends that change what PayGlocal does.</p></div>
+      <div class="muted small" id="intelMeta"></div>
+    </div>
+    <div class="filters">
+      <div class="seg" id="intelSeg" role="tablist" aria-label="Category"></div>
+      <span class="spacer"></span>
+      <input class="input sm search-sm" id="intelQ" type="search" placeholder="Search" aria-label="Search intel">
+      <select class="input sm" id="intelRange" aria-label="Time range"><option value="7">Last 7 days</option><option value="30" selected>Last 30 days</option><option value="">All time</option></select>
+      <label class="switch"><input type="checkbox" id="intelAct"><span>Act now only</span></label>
+    </div>
+    <div class="intel-layout">
+      <div id="intelList"></div>
+      <aside class="intel-rail">
+        <div class="panel"><div class="rail-title">Topics</div><div id="intelTopics" class="topic-list"></div></div>
+        <div class="panel rail-note">
+          <div class="rail-title">How to read this</div>
+          <p><span class="badge-act">Act now</span> touches PA-CB rules, FEMA and export realisation, or freelancer inflows.</p>
+          <p><b>Outlets</b> counts publishers that ran the same story; repeats are folded into one item.</p>
+        </div>
+      </aside>
+    </div>
   </section>
 
   <!-- REDDIT -->
   <section class="view" id="view-reddit" hidden>
-    <div class="hero"><div><div class="eyebrow">Buyer intent</div><h1>Reddit</h1><p>Indian freelancers, founders and exporters asking how to get paid from abroad, scored on the Reddit plan's 100-point model.</p></div></div>
-    <div class="panel rd-report" id="rdReport"></div>
-    <div class="chips-row" id="rdStatus"></div>
-    <div class="chips-row" id="rdBands"></div>
-    <div class="chips-row" id="rdSegments"></div>
-    <div class="chips-row" id="rdIntents"></div>
-    <div class="intel-list" id="rdList"></div>
+    <div class="page-head">
+      <div><h1>Reddit</h1><p>Indian businesses asking how to get paid from abroad, scored for buyer intent.</p></div>
+      <div class="seg" id="rdMode" role="tablist" aria-label="View"><button data-mode="inbox">Inbox</button><button data-mode="insights">Weekly insights</button></div>
+    </div>
+    <div id="rdInbox">
+      <div class="filters">
+        <div class="seg" id="rdStatus" role="tablist" aria-label="Status"></div>
+        <span class="spacer"></span>
+        <input class="input sm search-sm" id="rdQ" type="search" placeholder="Search threads" aria-label="Search threads">
+        <select class="input sm" id="rdBand" aria-label="Priority"></select>
+        <select class="input sm" id="rdSegment" aria-label="Segment"></select>
+        <select class="input sm" id="rdIntent" aria-label="Intent"></select>
+      </div>
+      <div class="inbox" id="rdBox">
+        <div class="ib-list" id="rdList" role="listbox" aria-label="Threads"></div>
+        <aside class="ib-detail" id="rdDetail" aria-live="polite"></aside>
+      </div>
+    </div>
+    <div id="rdInsights" hidden></div>
   </section>
 
   <!-- LIVE -->

@@ -319,7 +319,7 @@ api.get('/reddit', wrap((req, res) => {
   const items = rows.filter((r) => (!req.query.segment || r.meta.segment === req.query.segment) && (!req.query.intent || (r.meta.intents || []).includes(req.query.intent)));
   const facet = (k) => rows.reduce((m, r) => { for (const v of [].concat(k === 'intent' ? r.meta.intents || [] : r.meta[k] || [])) m[v] = (m[v] || 0) + 1; return m; }, {});
   const status = Object.fromEntries(q.all(`SELECT status, COUNT(*) n FROM intel WHERE category = 'voice' GROUP BY status`).map((r) => [r.status, r.n]));
-  res.json({ items: items.slice(0, 150).map((r) => ({ ...r, band: bandOf(r.score || 0) })), bands: REDDIT_BANDS, segments: REDDIT_SEGMENTS, intents: REDDIT_INTENTS, facets: { segment: facet('segment'), intent: facet('intent') }, status });
+  res.json({ items: items.slice(0, 300).map((r) => ({ ...r, band: bandOf(r.score || 0) })), bands: REDDIT_BANDS, segments: REDDIT_SEGMENTS, intents: REDDIT_INTENTS, facets: { segment: facet('segment'), intent: facet('intent') }, status });
 }));
 
 // Weekly voice-of-customer report: what people ask, which providers they complain about, and which subs yield leads.
