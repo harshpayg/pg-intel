@@ -160,23 +160,6 @@ function heuristicLead(item, source, cfg) {
   };
 }
 
-function heuristicIntel(item, source, route) {
-  const text = `${item.title} ${item.summary || ''}`;
-  // Without an LLM, only keep community posts that actually talk about getting paid from abroad.
-  if (route === 'voice' && !/\b(stripe|paypal|payoneer|wise\.com|skydo|xflow|razorpay|international payments?|receive payments?|foreign clients?|clients abroad|usd|firc|fira|ebrc|lut|export of services|swift|forex|wire transfer|chargebacks?|payment gateway|international cards?)\b/i.test(text)) return null;
-  const competitor = /\b(skydo|xflow|briskpe|razorpay|cashfree|paypal|stripe|payoneer|wise|airwallex|payu|juspay)\b/i.test(text);
-  const category = route === 'voice' ? 'voice' : source.id.startsWith('rbi') ? 'regulatory' : competitor ? 'competitor' : /\b(rbi|fema|dgft|policy|regulat|circular|guideline|direction)\b/i.test(text) ? 'regulatory' : 'market';
-  const hot = /\b(payment aggregator|pa-cb|cross[- ]border|fema|export|import|forex|lrs|edpms|remittance|data localisation|dpdp|kyc)\b/i.test(text);
-  const importance = hot ? 3 : category === 'regulatory' ? 1 : 2;
-  const soWhat = {
-    regulatory: hot ? 'Touches cross-border/PA rules: check impact on PayGlocal flows and merchant onboarding.' : 'Regulatory update; skim for anything touching payments or exports.',
-    competitor: 'Competitor movement: watch positioning, pricing and logos to win back.',
-    market: 'Market context for cross-border collections and export growth.',
-    voice: 'A real business describing payment friction abroad: a direct outreach or content angle.',
-  }[category];
-  return { category, title: item.title, summary: clip(item.summary || '', 400), so_what: soWhat, importance };
-}
-
 // First money amount that is not a valuation ("at Rs 16.7 Cr valuation").
 function raiseAmountText(t = '') {
   const re = /(US\$|USD|\$|₹|INR|Rs\.?)\s?[\d.,]+\s?(mn|million|m\b|cr\b|crore|bn|billion|b\b|lakh|k\b)?/gi;
@@ -277,7 +260,7 @@ const SCHEMA = () => ({
             type: 'OBJECT',
             nullable: true,
             properties: {
-              category: { type: 'STRING', enum: ['regulatory', 'competitor', 'market', 'voice'] },
+              category: { type: 'STRING', enum: ['regulatory', 'competitor', 'market', 'voice', 'payglocal'] },
               title: { type: 'STRING' },
               summary: { type: 'STRING' },
               so_what: { type: 'STRING' },
@@ -312,7 +295,11 @@ Your job for each news item / post:
    - people: founders/CXOs/MDs of THIS company named in the item, with role and a short verbatim quote as evidence. Never investors, angels or people from other companies. Empty if none.
    - team_size: headcount only if the item states it (e.g. "40-member team"), else null.
    - confidence: 0..1 that this is a real Indian company correctly extracted.
-2. "intel": set when the item is useful market/regulatory/competitor knowledge for PayGlocal leadership, or a "voice of customer" post describing payment pain (category "voice"). importance 1 (FYI) to 3 (act now). so_what: one sentence on what PayGlocal should do or know. Otherwise null.
+2. "intel": set ONLY when the item would change what PayGlocal sales, product or compliance does this month. Otherwise null. Be strict: court cases, raids, penalties on unrelated firms, import-only rules, crypto opinion, generic UPI-abroad stories already covered, and non-India payments news are null.
+   - category "regulatory" (RBI/FEMA/DGFT/PA rules), "competitor" (Skydo, Xflow, Razorpay, PayPal, Stripe, Payoneer, Wise etc.), "market" (export trends, rails, corridors), "payglocal" (PayGlocal itself), or "voice" (a Reddit post).
+   - For "voice": set only if the author is an Indian business or freelancer that RECEIVES money from abroad and has a payment problem or is choosing a provider. Consumers paying foreign websites, card/forex-card questions, jobs and anything unrelated are null.
+   - importance 1 (FYI) to 3 (act now).
+   - so_what: one concrete sentence specific to THIS item (who is affected and what PayGlocal should do). Never a generic line like "market context". For "voice": how to reply helpfully without spamming.
 Return one result per input item index "i". Be precise and conservative. Do not invent websites; only include a website if the item states it or it is unambiguous.`;
 
 function feedbackHints() {
@@ -354,7 +341,10 @@ export async function extractBatch(batch) {
       const out = await llmBatch(needLlm.map((idx) => batch[idx]));
       needLlm.forEach((idx, k) => {
         const r = out[k];
-        results[idx] = { leads: (r.leads || []).map(cleanLlmLead), intel: r.intel || null, via: 'llm' };
+        const cls = batch[idx].cls;
+        // The LLM can veto or sharpen the rules verdict; rules keep the Reddit score and tags.
+        const intel = r.intel && cls ? { ...cls, ...r.intel, category: cls.category === 'voice' ? 'voice' : r.intel.category, meta: cls.meta, score: cls.score } : null;
+        results[idx] = { leads: (r.leads || []).map(cleanLlmLead), intel, via: 'llm' };
       });
       return results;
     } catch {
@@ -363,10 +353,10 @@ export async function extractBatch(batch) {
   }
 
   for (const idx of needLlm) {
-    const { item, source, route } = batch[idx];
+    const { item, source, route, cls } = batch[idx];
     if (route === 'intel' || route === 'voice') {
       const lead = route === 'voice' ? null : heuristicLead(item, source, cfg);
-      results[idx] = { leads: lead ? [lead] : [], intel: heuristicIntel(item, source, route), via: 'rules' };
+      results[idx] = { leads: lead ? [lead] : [], intel: cls ? { ...cls, title: item.title, summary: clip(item.summary || '', 400) } : null, via: 'rules' };
     } else {
       const lead = heuristicLead(item, source, cfg);
       results[idx] = { leads: lead ? [lead] : [], intel: null, via: 'rules' };

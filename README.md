@@ -1,6 +1,6 @@
 # PayGlocal Lead Intel
 
-A lead-intelligence engine that runs 24/7. It watches Indian startup news, Google News, Y Combinator, Hacker News, Reddit, RBI and competitor feeds, and turns them into scored, explained and de-duplicated cross-border leads. It also builds a market-intel feed.
+A lead-intelligence engine that runs 24/7. It watches Indian startup news, Google News, Y Combinator, Hacker News, Reddit, RBI and competitor feeds, and turns them into scored, explained and de-duplicated cross-border leads. It also builds a market-intel feed (only items with a clear PayGlocal angle, repeat coverage folded into one card) and a Reddit buyer-intent tab: Indian freelancers, founders and exporters asking how to get paid from abroad, scored on the 100-point model in `reddit_plan.md` (80+ high priority, 50-79 research, below 50 monitor) with a segment, MCA/IPG product fit, intent, restricted-category flag and reply angle, plus a weekly voice-of-customer summary. Reddit sources cover the plan's Tier 1-3 subreddits, its keyword searches, and new comments in the Indian startup subs. Both classifiers live in `server/pipeline/intel.js`.
 
 ## Run
 
@@ -72,7 +72,7 @@ There are no automated tests yet.
 
 ## API
 
-`GET /api/brief`, `POST /api/brief/ack`, `GET /api/leads?q&sector&stage&minScore&status&days&intl&sort`, `GET /api/leads/:id`, `PATCH /api/leads/:id {status,notes,feedback}`, `POST /api/leads/:id/enrich`, `POST /api/leads/:id/lookalike`, `POST /api/leads/:id/contacts`, `PATCH|DELETE /api/contacts/:id`, `POST /api/contacts/:id/find-email`, `GET /api/leads.csv`, `GET /api/intel`, `GET|POST|PATCH|DELETE /api/sources`, `POST /api/scan`, `POST /api/agent/run`, `GET|PUT /api/config`, `POST /api/config/preview`, `GET /api/stream` (SSE).
+`GET /api/brief`, `POST /api/brief/ack`, `GET /api/leads?q&sector&stage&minScore&status&days&intl&sort`, `GET /api/leads/:id`, `PATCH /api/leads/:id {status,notes,feedback}`, `POST /api/leads/:id/enrich`, `POST /api/leads/:id/lookalike`, `POST /api/leads/:id/contacts`, `PATCH|DELETE /api/contacts/:id`, `POST /api/contacts/:id/find-email`, `GET /api/leads.csv`, `GET /api/intel`, `GET /api/reddit?status&band&segment&intent`, `GET /api/reddit/report`, `PATCH /api/reddit/:id {status}`, `GET|POST|PATCH|DELETE /api/sources`, `POST /api/scan`, `POST /api/agent/run`, `GET|PUT /api/config`, `POST /api/config/preview`, `GET /api/stream` (SSE).
 
 The original single-file prototype is in `legacy/`.
 

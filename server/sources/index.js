@@ -55,10 +55,21 @@ async function redditOAuth(p) {
     if (!j.access_token) throw new Error(`Reddit auth failed: ${j.error || res.status}`);
     redditToken = { token: j.access_token, exp: Date.now() + (j.expires_in - 60) * 1000 };
   }
-  const path = p.search
-    ? `${p.sub ? `/r/${p.sub}` : ''}/search?q=${encodeURIComponent(p.search)}&sort=new&t=month&limit=50${p.sub ? '&restrict_sr=1' : ''}`
-    : `/r/${p.sub}/new?limit=50`;
+  const path = p.comments
+    ? `/r/${p.sub}/comments?limit=100`
+    : p.search
+      ? `${p.sub ? `/r/${p.sub}` : ''}/search?q=${encodeURIComponent(p.search)}&sort=new&t=month&limit=50${p.sub ? '&restrict_sr=1' : ''}`
+      : `/r/${p.sub}/new?limit=50`;
   const data = await fetchJson(`https://oauth.reddit.com${path}`, { headers: { authorization: `bearer ${redditToken.token}` } });
+  if (p.comments) {
+    return (data?.data?.children || []).map((c) => c.data).filter((d) => d.body && d.link_title).map((d) => ({
+      url: `https://www.reddit.com${d.permalink}`,
+      title: d.link_title,
+      summary: clip(d.body, 1500),
+      published_at: new Date(d.created_utc * 1000).toISOString(),
+      meta: { sub: d.subreddit, score: d.score, comment: true },
+    }));
+  }
   return (data?.data?.children || []).map((c) => c.data).filter((d) => !/^\[(for hire|hiring|meta|mod)\]/i.test(d.title)).map((d) => ({
     url: `https://www.reddit.com${d.permalink}`,
     title: d.title,
@@ -92,10 +103,14 @@ const kinds = {
   async reddit(p) {
     // Prefer the official API when a (free) Reddit app is configured: far higher rate limits.
     if (process.env.REDDIT_CLIENT_ID && process.env.REDDIT_CLIENT_SECRET) return redditOAuth(p);
-    const url = p.search
-      ? `https://www.reddit.com/${p.sub ? `r/${p.sub}/` : ''}search.rss?q=${encodeURIComponent(p.search)}&sort=new&t=month${p.sub ? '&restrict_sr=1' : ''}`
-      : `https://www.reddit.com/r/${p.sub}/new/.rss`;
+    const url = p.comments
+      ? `https://www.reddit.com/r/${p.sub}/comments/.rss`
+      : p.search
+        ? `https://www.reddit.com/${p.sub ? `r/${p.sub}/` : ''}search.rss?q=${encodeURIComponent(p.search)}&sort=new&t=month${p.sub ? '&restrict_sr=1' : ''}`
+        : `https://www.reddit.com/r/${p.sub}/new/.rss`;
     const { text } = await fetchText(url);
+    // Comment feed titles read "/u/name on Post title"; keep only the post title (no usernames stored).
+    if (p.comments) return parseFeed(text).map((i) => ({ ...i, title: i.title.replace(/^\/?u\/\S+ on /, ''), summary: clip(i.summary, 1500), meta: { sub: p.sub, comment: true } }));
     return parseFeed(text).filter((i) => !/^r\/\w+$/.test(i.title) && !/^\[(for hire|hiring|meta|mod)\]/i.test(i.title)).map((i) => ({ ...i, summary: clip(i.summary.replace(/submitted by .*$/i, '').trim(), 1500), meta: { ...i.meta, sub: p.sub } }));
   },
 
@@ -152,6 +167,9 @@ export async function fetchSource(source) {
 }
 
 // Seed catalogue. Categories: leads (company discovery), intel (market/regulatory), voice (pain signals).
+// Seed ids that were removed: disabled on boot (rd-fira matched photo LUTs and Fira Code; rd-saas-india is folded into rd-saas-dev).
+export const RETIRED_SOURCES = ['rd-fira', 'rd-saas-india'];
+
 export const SEED_SOURCES = [
   // Indian startup and business news
   { id: 'inc42', name: 'Inc42', kind: 'rss', params: { url: 'https://inc42.com/feed/' }, cadence_min: 30 },
@@ -180,18 +198,49 @@ export const SEED_SOURCES = [
   { id: 'hn-india', name: 'Hacker News: India builders', kind: 'hn', params: { query: 'India', tags: 'show_hn', days: 45 }, cadence_min: 360 },
   { id: 'hn-bangalore', name: 'Hacker News: Bangalore', kind: 'hn', params: { query: 'Bangalore', days: 45 }, cadence_min: 360 },
 
-  // Voice of market: pain signals
+  // Reddit buyer intent, per reddit_plan.md: Tier 1 India subs, Tier 2 SaaS/dev, Tier 3 freelancers, plus the plan's
+  // keyword searches. Global subs are searched with payment + India terms; classifyReddit() scores every post.
+  // Names that may not exist get their own source, so a 404 disables only that one (visible in the Sources tab).
   { id: 'rd-indianstartups', name: 'Reddit r/IndianStartups', kind: 'reddit', category: 'voice', params: { sub: 'IndianStartups' }, cadence_min: 120 },
   { id: 'rd-startupindia', name: 'Reddit r/StartUpIndia', kind: 'reddit', category: 'voice', params: { sub: 'StartUpIndia' }, cadence_min: 120 },
+  { id: 'rd-freelance-india', name: 'Reddit r/FreelanceIndia', kind: 'reddit', category: 'voice', params: { sub: 'FreelanceIndia' }, cadence_min: 120 },
+  { id: 'rd-ecommerce-india', name: 'Reddit r/EcommerceIndia', kind: 'reddit', category: 'voice', params: { sub: 'EcommerceIndia' }, cadence_min: 180 },
+  { id: 'rd-indiabusiness', name: 'Reddit r/IndiaBusiness', kind: 'reddit', category: 'voice', params: { sub: 'IndiaBusiness' }, cadence_min: 240 },
+  { id: 'rd-indianentrepreneur', name: 'Reddit r/IndianEntrepreneur', kind: 'reddit', category: 'voice', params: { sub: 'IndianEntrepreneur' }, cadence_min: 240 },
+  { id: 'rd-indiatax-export', name: 'Reddit r/IndiaTax: export of services', kind: 'reddit', category: 'voice', params: { sub: 'IndiaTax', search: 'FIRA OR FIRC OR LUT OR "export of services" OR "foreign client" OR "foreign remittance" OR paypal OR payoneer OR stripe' }, cadence_min: 360 },
+  { id: 'rd-india-big', name: 'Reddit: developersIndia, IndiaInvestments, IndiaSpeaks (payments)', kind: 'reddit', category: 'voice', params: { sub: 'developersIndia+IndiaInvestments+IndiaSpeaks', search: '"international payments" OR "receive USD" OR "get paid in USD" OR "foreign clients" OR "payment gateway" OR "SWIFT fees" OR "payment from USA" OR paypal OR stripe OR payoneer OR FIRA' }, cadence_min: 360 },
+  { id: 'rd-india-comments', name: 'Reddit comments: Indian startup subs', kind: 'reddit', category: 'voice', params: { sub: 'IndianStartups+StartUpIndia', comments: true }, cadence_min: 120 },
+  { id: 'rd-saas-dev', name: 'Reddit: SaaS and dev subs (India + payments)', kind: 'reddit', category: 'voice', params: { sub: 'SaaS+microsaas+indiehackers+startups+Entrepreneur+webdev+nextjs', search: 'india (stripe OR "payment gateway" OR razorpay OR paddle OR "international payments" OR "merchant of record")' }, cadence_min: 360 },
+  { id: 'rd-stores', name: 'Reddit: Shopify / WooCommerce / WordPress (India)', kind: 'reddit', category: 'voice', params: { sub: 'shopify+woocommerce+Wordpress', search: 'india (payment OR gateway OR "international cards" OR paypal OR stripe)' }, cadence_min: 480 },
+  { id: 'rd-freelance-global', name: 'Reddit: freelancer subs (India + getting paid)', kind: 'reddit', category: 'voice', params: { sub: 'freelance+freelancing+Upwork+WorkOnline+digitalnomad+remotework+forhire+EntrepreneurRideAlong+GraphicDesign', search: 'india (paypal OR payoneer OR wise OR "get paid" OR "receive payment" OR invoice OR USD)' }, cadence_min: 480 },
   { id: 'rd-intl-payments', name: 'Reddit: international payments India', kind: 'reddit', category: 'voice', params: { search: '"international payments" india' }, cadence_min: 360 },
-  { id: 'rd-stripe-india', name: 'Reddit: Stripe/PayPal India', kind: 'reddit', category: 'voice', params: { search: '(stripe OR paypal OR payoneer) india fees' }, cadence_min: 360 },
-  { id: 'rd-fira', name: 'Reddit: FIRA / export invoices', kind: 'reddit', category: 'voice', params: { search: 'FIRA OR FIRC OR "export of services" OR LUT' }, cadence_min: 480 },
+  { id: 'rd-stripe-india', name: 'Reddit: provider complaints India', kind: 'reddit', category: 'voice', params: { search: '(stripe OR paypal OR payoneer OR razorpay OR cashfree OR skydo OR wise) india (fees OR frozen OR rejected OR alternative)' }, cadence_min: 360 },
+  { id: 'rd-receive-abroad', name: 'Reddit: receive USD / payment from USA (India)', kind: 'reddit', category: 'voice', params: { search: '("receive USD" OR "get paid in USD" OR "payment from USA" OR "foreign clients" OR "SWIFT fees" OR "receive payment") india' }, cadence_min: 360 },
+  { id: 'rd-gateway-india', name: 'Reddit: payment gateway India (international)', kind: 'reddit', category: 'voice', params: { search: '"payment gateway" india (international OR saas OR subscription OR "international cards")' }, cadence_min: 480 },
+  { id: 'rd-exporters', name: 'Reddit: Indian exporters getting paid', kind: 'reddit', category: 'voice', params: { search: 'exporter india (payment OR buyer OR "advance payment" OR "bank charges" OR "letter of credit")' }, cadence_min: 480 },
+  { id: 'rd-sellers-india', name: 'Reddit: Etsy/Amazon sellers from India', kind: 'reddit', category: 'voice', params: { search: '(etsy OR "amazon global" OR shopify) seller india (payout OR payments OR paypal OR payoneer)' }, cadence_min: 480 },
+
+  // Wider net from reddit_plan.md section 2 (the other 70 subs): small groups, polled less often. Drop a group
+  // from the Sources tab once the weekly yield panel shows it never produces 80+ threads.
+  { id: 'rd-x-cities-1', name: 'Reddit: India city subs 1 (payments)', kind: 'reddit', category: 'voice', params: { sub: 'India+bangalore+mumbai+delhi+hyderabad', search: '"international payments" OR "foreign clients" OR "receive USD" OR "payment gateway" OR paypal OR payoneer OR stripe OR FIRA OR "export of services" OR exporter' }, cadence_min: 720, max_cadence: 2880 },
+  { id: 'rd-x-cities-2', name: 'Reddit: India city subs 2 (payments)', kind: 'reddit', category: 'voice', params: { sub: 'pune+Chennai+ahmedabad+kerala+kolkata', search: '"international payments" OR "foreign clients" OR "receive USD" OR "payment gateway" OR paypal OR payoneer OR stripe OR FIRA OR "export of services" OR exporter' }, cadence_min: 720, max_cadence: 2880 },
+  { id: 'rd-x-founders', name: 'Reddit: founder and small business subs (India)', kind: 'reddit', category: 'voice', params: { sub: 'Business_Ideas+smallbusiness+Business+Entrepreneurship+Startup', search: 'india (paypal OR stripe OR payoneer OR wise OR razorpay OR "payment gateway" OR "international payments" OR "get paid" OR "receive payment" OR "foreign clients" OR USD OR FIRA)' }, cadence_min: 720, max_cadence: 2880 },
+  { id: 'rd-x-services-1', name: 'Reddit: agency and marketing subs (India)', kind: 'reddit', category: 'voice', params: { sub: 'consulting+marketing+digital_marketing+SEO+copywriting', search: 'india (paypal OR stripe OR payoneer OR wise OR razorpay OR "payment gateway" OR "international payments" OR "get paid" OR "receive payment" OR "foreign clients" OR USD OR FIRA)' }, cadence_min: 720, max_cadence: 2880 },
+  { id: 'rd-x-services-2', name: 'Reddit: remote work subs (India)', kind: 'reddit', category: 'voice', params: { sub: 'remotejs+RemoteJobs+virtualassistant+translation', search: 'india (paypal OR stripe OR payoneer OR wise OR razorpay OR "payment gateway" OR "international payments" OR "get paid" OR "receive payment" OR "foreign clients" OR USD OR FIRA)' }, cadence_min: 720, max_cadence: 2880 },
+  { id: 'rd-x-creative', name: 'Reddit: design and video subs (India)', kind: 'reddit', category: 'voice', params: { sub: 'graphic_design+web_design+VideoEditing', search: 'india (paypal OR stripe OR payoneer OR wise OR razorpay OR "payment gateway" OR "international payments" OR "get paid" OR "receive payment" OR "foreign clients" OR USD OR FIRA)' }, cadence_min: 720, max_cadence: 2880 },
+  { id: 'rd-x-ecom-1', name: 'Reddit: e-commerce and dropshipping subs (India)', kind: 'reddit', category: 'voice', params: { sub: 'ecommerce+ShopifyeCommerce+dropship+dropshipping+BigCommerce', search: 'india (paypal OR stripe OR payoneer OR wise OR razorpay OR "payment gateway" OR "international payments" OR "get paid" OR "receive payment" OR "foreign clients" OR USD OR FIRA)' }, cadence_min: 720, max_cadence: 2880 },
+  { id: 'rd-x-ecom-2', name: 'Reddit: Amazon and Etsy seller subs (India)', kind: 'reddit', category: 'voice', params: { sub: 'FulfillmentByAmazon+AmazonSeller+AmazonFBA+EtsySellers+Etsy', search: 'india (paypal OR stripe OR payoneer OR wise OR razorpay OR "payment gateway" OR "international payments" OR "get paid" OR "receive payment" OR "foreign clients" OR USD OR FIRA)' }, cadence_min: 720, max_cadence: 2880 },
+  { id: 'rd-x-ecom-3', name: 'Reddit: print on demand and resale subs (India)', kind: 'reddit', category: 'voice', params: { sub: 'printondemand+Flipping', search: 'india (paypal OR stripe OR payoneer OR wise OR razorpay OR "payment gateway" OR "international payments" OR "get paid" OR "receive payment" OR "foreign clients" OR USD OR FIRA)' }, cadence_min: 1440, max_cadence: 2880 },
+  { id: 'rd-x-builders-1', name: 'Reddit: indie builder subs (India)', kind: 'reddit', category: 'voice', params: { sub: 'SideProject+IMadeThis+BuildInPublic+NoCode+TechnologyStartups', search: 'india (paypal OR stripe OR payoneer OR wise OR razorpay OR "payment gateway" OR "international payments" OR "get paid" OR "receive payment" OR "foreign clients" OR USD OR FIRA)' }, cadence_min: 720, max_cadence: 2880 },
+  { id: 'rd-x-builders-2', name: 'Reddit: developer subs (India + payments)', kind: 'reddit', category: 'voice', params: { sub: 'reactjs+ExperiencedDevs+learnprogramming+SubscriptionBoxes', search: 'india (paypal OR stripe OR payoneer OR wise OR razorpay OR "payment gateway" OR "international payments" OR "get paid" OR "receive payment" OR "foreign clients" OR USD OR FIRA)' }, cadence_min: 1440, max_cadence: 2880 },
+  { id: 'rd-x-trade', name: 'Reddit: import/export and trade subs (India)', kind: 'reddit', category: 'voice', params: { sub: 'ImportExport+InternationalBusiness+Trade+logistics+Alibaba', search: 'india (paypal OR stripe OR payoneer OR wise OR razorpay OR "payment gateway" OR "international payments" OR "get paid" OR "receive payment" OR "foreign clients" OR USD OR FIRA)' }, cadence_min: 720, max_cadence: 2880 },
+  { id: 'rd-x-edu-travel', name: 'Reddit: education and travel business subs (India)', kind: 'reddit', category: 'voice', params: { sub: 'edtech+OnlineEducation+Teachers+TravelAgents+tourism', search: 'india (paypal OR stripe OR payoneer OR wise OR razorpay OR "payment gateway" OR "international payments" OR "get paid" OR "receive payment" OR "foreign clients" OR USD OR FIRA)' }, cadence_min: 1440, max_cadence: 2880 },
 
   // Market and regulatory intel
   { id: 'rbi-press', name: 'RBI Press Releases', kind: 'rss', category: 'intel', params: { url: 'https://rbi.org.in/pressreleases_rss.xml' }, cadence_min: 120 },
   { id: 'rbi-notifications', name: 'RBI Notifications', kind: 'rss', category: 'intel', params: { url: 'https://rbi.org.in/notifications_rss.xml' }, cadence_min: 120 },
-  { id: 'gn-competitors', name: 'GNews: competitor moves', kind: 'gnews', category: 'intel', params: { query: 'Skydo OR Xflow OR Briskpe OR "Razorpay international" OR "Cashfree cross-border" OR "PayPal India" when:14d' }, cadence_min: 240 },
+  { id: 'gn-competitors', name: 'GNews: competitor moves', kind: 'gnews', category: 'intel', params: { query: 'Skydo OR Xflow OR Briskpe OR "Razorpay international" OR "Cashfree cross-border" OR "PayPal India" OR "Payoneer India" OR "Wise India" OR "Stripe India" OR "Airwallex India" when:14d' }, cadence_min: 240 },
   { id: 'gn-xb-payments', name: 'GNews: cross-border payments India', kind: 'gnews', category: 'intel', params: { query: '"cross-border payments" India OR "payment aggregator cross border" when:14d' }, cadence_min: 240 },
-  { id: 'gn-export-policy', name: 'GNews: export policy / DGFT', kind: 'gnews', category: 'intel', params: { query: 'DGFT OR "export policy" OR "foreign trade policy" India when:14d' }, cadence_min: 360 },
+  { id: 'gn-export-policy', name: 'GNews: export policy and incentives', kind: 'gnews', category: 'intel', params: { query: '"export proceeds" OR EDPMS OR "e-BRC" OR RoDTEP OR "export promotion mission" OR "foreign trade policy" OR "services exports" India when:14d' }, cadence_min: 360 },
   { id: 'gn-payglocal', name: 'GNews: PayGlocal mentions', kind: 'gnews', category: 'intel', params: { query: 'PayGlocal when:60d' }, cadence_min: 720 },
 ];

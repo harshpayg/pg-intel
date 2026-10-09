@@ -185,6 +185,10 @@ function addColumn(table, col, type) {
 }
 addColumn('companies', 'team', 'TEXT');           // { min, max, exact, source, url, evidence, at }
 addColumn('companies', 'people_checked_at', 'TEXT');
+addColumn('intel', 'meta', 'TEXT');                // classifier tags: topic, or Reddit sub/segment/intent/signals
+addColumn('intel', 'score', 'INTEGER');            // Reddit buyer-intent score 0..100
+addColumn('intel', 'status', "TEXT NOT NULL DEFAULT 'new'"); // Reddit triage: new | replied | lead | ignored
+addColumn('intel', 'coverage', 'INTEGER NOT NULL DEFAULT 1'); // how many outlets ran the same story
 
 export const nowIso = () => new Date().toISOString();
 

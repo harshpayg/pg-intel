@@ -17,6 +17,7 @@
     <a href="#brief" data-view="brief">Brief</a>
     <a href="#leads" data-view="leads">Leads</a>
     <a href="#intel" data-view="intel">Market intel</a>
+    <a href="#reddit" data-view="reddit">Reddit</a>
     <a href="#live" data-view="live">Live</a>
     <a href="#sources" data-view="sources">Sources</a>
     <a href="#config" data-view="config">Config</a>
@@ -89,9 +90,20 @@
 
   <!-- INTEL -->
   <section class="view" id="view-intel" hidden>
-    <div class="hero"><div><div class="eyebrow">Know the market</div><h1>Market intel</h1><p>Regulatory moves, competitor activity, export trends and real merchants describing payment pain.</p></div></div>
+    <div class="hero"><div><div class="eyebrow">Know the market</div><h1>Market intel</h1><p>Only what changes what PayGlocal does: RBI and FEMA rules, competitor moves, export corridors and PayGlocal in the news. Repeat coverage is folded into one card.</p></div></div>
     <div class="chips-row" id="intelTabs"></div>
     <div class="intel-list" id="intelList"></div>
+  </section>
+
+  <!-- REDDIT -->
+  <section class="view" id="view-reddit" hidden>
+    <div class="hero"><div><div class="eyebrow">Buyer intent</div><h1>Reddit</h1><p>Indian freelancers, founders and exporters asking how to get paid from abroad, scored on the Reddit plan's 100-point model.</p></div></div>
+    <div class="panel rd-report" id="rdReport"></div>
+    <div class="chips-row" id="rdStatus"></div>
+    <div class="chips-row" id="rdBands"></div>
+    <div class="chips-row" id="rdSegments"></div>
+    <div class="chips-row" id="rdIntents"></div>
+    <div class="intel-list" id="rdList"></div>
   </section>
 
   <!-- LIVE -->
@@ -121,7 +133,7 @@
           <option value="hn">Hacker News search</option>
         </select>
         <input class="input grow" name="value" id="srcValue" placeholder="https://example.com/feed" required>
-        <select class="input" name="category"><option value="leads">Leads</option><option value="intel">Market intel</option><option value="voice">Voice of customer</option></select>
+        <select class="input" name="category"><option value="leads">Leads</option><option value="intel">Market intel</option><option value="voice">Reddit / buyer intent</option></select>
         <input class="input" name="name" placeholder="Display name (optional)">
         <button type="button" class="btn" id="testSrc">Test</button>
         <button class="btn primary">Add source</button>

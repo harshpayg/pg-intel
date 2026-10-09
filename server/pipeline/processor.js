@@ -1,6 +1,7 @@
 import { q, J, nowIso } from '../db.js';
 import { getConfig } from '../config.js';
 import { prefilter } from './prefilter.js';
+import { saveIntel } from './intel-store.js';
 import { extractBatch } from './extract.js';
 import { upsertLead } from './resolve.js';
 import { rescore } from './score.js';
@@ -46,7 +47,7 @@ async function processBatch() {
       stats.passed++;
       q.run(`UPDATE raw_items SET status='processing', prefilter=? WHERE id=?`, JSON.stringify(pf.hits), r.id);
       q.run('UPDATE sources SET passed_total = passed_total + 1 WHERE id = ?', source.id);
-      batch.push({ item, source, route: pf.route, rawId: r.id });
+      batch.push({ item, source, route: pf.route, cls: pf.cls, rawId: r.id });
       if (batch.length >= (llm.available() ? cfg.llm.batchSize : 25)) break;
     }
     if (!batch.length) return;
@@ -70,14 +71,9 @@ async function processBatch() {
         }
       }
       if (leadsHere) q.run('UPDATE sources SET leads_total = leads_total + ? WHERE id = ?', leadsHere, b.source.id);
-      if (r.intel && (r.intel.importance ?? 2) >= 1) {
-        const dup = q.get('SELECT 1 FROM intel WHERE url = ? OR title = ?', b.item.url, r.intel.title);
-        if (!dup) {
-          q.run('INSERT INTO intel(raw_item_id, source_id, category, title, summary, so_what, importance, url, published_at) VALUES(?,?,?,?,?,?,?,?,?)',
-            b.rawId, b.source.id, r.intel.category, r.intel.title || b.item.title, r.intel.summary || b.item.summary, r.intel.so_what, Math.max(1, Math.min(3, r.intel.importance || 2)), b.item.url, b.item.published_at);
-          stats.intelNew++;
-          bus.emit('intel', { title: r.intel.title || b.item.title, category: r.intel.category });
-        }
+      if (r.intel && saveIntel(r.intel, b.item, b.source, b.rawId)) {
+        stats.intelNew++;
+        bus.emit('intel', { title: r.intel.title || b.item.title, category: r.intel.category });
       }
       q.run(`UPDATE raw_items SET status='done', note=? WHERE id=?`, `${r.via}: ${(r.leads || []).length} lead(s)${r.intel ? ', intel' : ''}`, b.rawId);
     });

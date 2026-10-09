@@ -36,17 +36,17 @@ const ago = (iso) => {
 const fmtDate = (iso) => (iso ? new Date(iso).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : '');
 const avatar = (l) => `<div class="avatar">${l.logo ? `<img src="${esc(safeUrl(l.logo))}" alt="" loading="lazy" onerror="this.remove()">` : ''}${l.logo ? '' : esc(initials(l.name))}</div>`;
 
-const state = { view: 'brief', threshold: 60, stats: null, leadsOffset: 0, intelCat: '', config: null, pendingLeads: 0 };
+const state = { view: 'brief', threshold: 60, stats: null, leadsOffset: 0, intelCat: '', rd: { status: 'open', band: '', segment: '', intent: '' }, config: null, pendingLeads: 0 };
 
 // ---------- routing ----------
-const VIEWS = ['brief', 'leads', 'intel', 'live', 'sources', 'config'];
+const VIEWS = ['brief', 'leads', 'intel', 'reddit', 'live', 'sources', 'config'];
 function route() {
   const [v, id] = location.hash.slice(1).split('/');
   const view = VIEWS.includes(v) ? v : 'brief';
   state.view = view;
   for (const x of VIEWS) $(`#view-${x}`).hidden = x !== view;
   $$('#tabs a').forEach((a) => a.classList.toggle('active', a.dataset.view === view));
-  ({ brief: loadBrief, leads: () => loadLeads(true), intel: loadIntel, live: loadLive, sources: loadSources, config: loadConfig })[view]();
+  ({ brief: loadBrief, leads: () => loadLeads(true), intel: loadIntel, reddit: loadReddit, live: loadLive, sources: loadSources, config: loadConfig })[view]();
   if (id) openLead(id);
 }
 window.addEventListener('hashchange', route);
@@ -120,7 +120,8 @@ async function loadBrief() {
   $('#briefCount').textContent = b.leads.length ? `Showing ${b.leads.length}, ranked, with ${b.leads.filter((l) => l.explore).length} exploration picks` : '';
   $('#briefLeads').innerHTML = b.leads.length ? b.leads.map(leadCard).join('') : `<div class="empty"><strong>Nothing new since your last check.</strong>The engine keeps scanning. New funding, expansion and payment-pain signals will appear here automatically.</div>`;
   bindLeadClicks($('#briefLeads'));
-  $('#briefIntel').innerHTML = b.intel.length ? b.intel.slice(0, 6).map(intelMini).join('') : '<div class="muted small">No new intel since last check.</div>';
+  $('#briefIntel').innerHTML = (b.redditHot ? `<div class="it"><a href="#reddit">${b.redditHot} hot Reddit thread${b.redditHot > 1 ? 's' : ''} to answer</a><p>Indian businesses asking how to get paid from abroad.</p></div>` : '')
+    + (b.intel.length ? b.intel.slice(0, 6).map(intelMini).join('') : '<div class="muted small">No new intel since last check.</div>');
 }
 
 const impDots = (n) => `<span class="imp" title="Importance ${n}/3">${[1, 2, 3].map((i) => `<i class="${i <= n ? 'on' : ''}"></i>`).join('')}</span>`;
@@ -332,19 +333,75 @@ $('#drawerWrap').addEventListener('click', (e) => { if (e.target.id === 'drawerW
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeDrawer(); });
 
 // ---------- intel ----------
+const CAT_LABEL = { regulatory: 'Regulatory', competitor: 'Competitor', market: 'Market', payglocal: 'PayGlocal' };
 async function loadIntel() {
   const r = await api(`/intel${state.intelCat ? `?category=${state.intelCat}` : ''}`);
   const counts = Object.fromEntries(r.counts.map((c) => [c.category, c.n]));
   const total = r.counts.reduce((s, c) => s + c.n, 0);
-  const cats = [['', 'All', total], ['regulatory', 'Regulatory', counts.regulatory], ['competitor', 'Competitors', counts.competitor], ['market', 'Market', counts.market], ['voice', 'Voice of customer', counts.voice]];
+  const cats = [['', 'All', total], ['regulatory', 'Regulatory', counts.regulatory], ['competitor', 'Competitors', counts.competitor], ['market', 'Market', counts.market], ['payglocal', 'PayGlocal in news', counts.payglocal]];
   $('#intelTabs').innerHTML = cats.map(([k, l, n]) => `<button class="chipbtn ${state.intelCat === k ? 'active' : ''}" data-k="${k}">${l} ${n ? `· ${n}` : ''}</button>`).join('');
   $$('#intelTabs button').forEach((b) => (b.onclick = () => { state.intelCat = b.dataset.k; loadIntel(); }));
   $('#intelList').innerHTML = r.items.length ? r.items.map((i) => `<article class="intel-card">
-    <div>${impDots(i.importance)}<span class="cat ${i.category}">${esc(i.category)}</span> <span class="muted small">· ${esc(i.source_name || '')} · ${ago(i.published_at || i.created_at)}</span></div>
+    <div>${impDots(i.importance)}<span class="cat ${i.category}">${esc(CAT_LABEL[i.category] || i.category)}</span> <span class="muted small">· ${esc(i.source_name || '')} · ${ago(i.published_at || i.created_at)}${i.coverage > 1 ? ` · ${i.coverage} outlets` : ''}</span></div>
     <h4><a href="${esc(safeUrl(i.url))}" target="_blank" rel="noopener">${esc(i.title)}</a></h4>
     ${i.summary ? `<p>${esc(i.summary.slice(0, 260))}</p>` : ''}
     ${i.so_what ? `<div class="so-what"><b>So what:</b> ${esc(i.so_what)}</div>` : ''}
-  </article>`).join('') : '<div class="empty"><strong>No intel yet.</strong>RBI, competitor and market feeds are scanned on a schedule.</div>';
+  </article>`).join('') : '<div class="empty"><strong>Nothing relevant yet.</strong>RBI, competitor and market feeds are scanned on a schedule; only items with a clear PayGlocal angle land here.</div>';
+}
+
+// ---------- reddit ----------
+const RD_STATUS = [['open', 'Open'], ['replied', 'Replied'], ['lead', 'Sales lead'], ['ignored', 'Ignored'], ['all', 'All']];
+async function loadReddit() {
+  const f = state.rd;
+  const qs = new URLSearchParams({ status: f.status, ...(f.band && { band: f.band }), ...(f.segment && { segment: f.segment }), ...(f.intent && { intent: f.intent }) });
+  const [r, rep] = await Promise.all([api(`/reddit?${qs}`), api('/reddit/report')]);
+  renderRedditReport(rep, r);
+  const chip = (group, k, label, n, active) => `<button class="chipbtn ${active ? 'active' : ''}" data-g="${group}" data-k="${esc(k)}">${esc(label)}${n ? ` · ${n}` : ''}</button>`;
+  const stN = { ...r.status, open: r.status.new, all: Object.values(r.status).reduce((a, b) => a + b, 0) };
+  $('#rdStatus').innerHTML = RD_STATUS.map(([k, l]) => chip('status', k, l, stN[k], f.status === k)).join('');
+  $('#rdBands').innerHTML = chip('band', '', 'Any score', 0, !f.band) + r.bands.map((x) => chip('band', x.id, `${x.label} (${x.min ? `${x.min}+` : '<50'})`, 0, f.band === x.id)).join('');
+  $('#rdSegments').innerHTML = chip('segment', '', 'All segments', 0, !f.segment) + r.segments.map((x) => chip('segment', x.id, x.label, r.facets.segment[x.id], f.segment === x.id)).join('');
+  $('#rdIntents').innerHTML = chip('intent', '', 'Any intent', 0, !f.intent) + r.intents.map((x) => chip('intent', x.id, x.label, r.facets.intent[x.id], f.intent === x.id)).join('');
+  $$('#view-reddit .chips-row button').forEach((b) => (b.onclick = () => { f[b.dataset.g] = b.dataset.k; loadReddit(); }));
+  $('#rdList').innerHTML = r.items.length ? r.items.map(redditCard).join('') : '<div class="empty"><strong>No threads match.</strong>Reddit is scanned every few hours; consumer questions, jobs and off-topic posts are filtered out.</div>';
+  $$('#rdList [data-st]').forEach((b) => (b.onclick = async () => {
+    await api(`/reddit/${b.dataset.id}`, { method: 'PATCH', body: { status: b.dataset.st } });
+    toast(b.dataset.st === 'new' ? 'Moved back to open' : `Marked ${b.textContent.toLowerCase()}`);
+    loadReddit();
+  }));
+}
+
+// Weekly voice-of-customer summary (plan section 6) and yield by subreddit (plan section 5: measure qualified conversations).
+function renderRedditReport(rep, r) {
+  const label = (list, id) => list.find((x) => x.id === id)?.label || id;
+  const top = (obj, fmt, n = 4) => Object.entries(obj || {}).sort((a, b) => b[1] - a[1]).slice(0, n).map(([k, v]) => `${esc(fmt(k))} <b>${v}</b>`).join(' · ') || '<span class="muted">none yet</span>';
+  $('#rdReport').innerHTML = rep.total ? `<div class="panel-head"><h3>This week on Reddit</h3><span class="muted small">${rep.total} qualified threads · ${rep.bands.high || 0} high priority · ${rep.bands.research || 0} research${rep.restricted ? ` · ${rep.restricted} restricted` : ''}</span></div>
+    <div class="rd-rep-grid">
+      <div><div class="eyebrow">What they ask</div>${top(rep.intents, (k) => label(r.intents, k))}</div>
+      <div><div class="eyebrow">Who is asking</div>${top(rep.segments, (k) => label(r.segments, k))}</div>
+      <div><div class="eyebrow">Product fit</div>${top(rep.fit, (k) => k)}</div>
+      <div><div class="eyebrow">Provider complaints</div>${top(rep.complaints, (k) => k)}</div>
+      <div class="wide"><div class="eyebrow">Yield by subreddit (posts / 80+ / replied / leads)</div>${rep.subs.map((x) => `<span class="pill">${x.sub === 'search' ? 'keyword search' : `r/${esc(x.sub)}`} ${x.posts} / ${x.high} / ${x.replied} / ${x.lead}</span>`).join(' ')}</div>
+    </div>` : '<div class="muted small">No Reddit threads in the last 7 days yet.</div>';
+}
+
+function redditCard(i) {
+  const m = i.meta || {};
+  const sc = i.score || 0;
+  const band = i.band || {};
+  const acts = [['replied', 'Replied'], ['lead', 'Sales lead'], ['ignored', 'Ignore']].filter(([k]) => k !== i.status);
+  if (i.status !== 'new') acts.push(['new', 'Reopen']);
+  return `<article class="intel-card rd-card">
+    <div class="rd-top"><span class="rd-score ${band.id || ''}" title="${esc(band.label || '')}: ${esc(band.action || '')}">${sc}</span><span class="small"><b>${esc(band.label || '')}</b></span>
+      ${m.segmentLabel ? `<span class="tag">${esc(m.segmentLabel)}</span>` : ''}${m.fit ? `<span class="tag plain" title="Product fit">${esc(m.fit)}</span>` : ''}${m.restricted ? `<span class="tag danger" title="Route to compliance before any outreach">Restricted: ${esc(m.restricted)}</span>` : ''}
+      <span class="muted small">${m.comment ? 'comment · ' : ''}${m.sub ? `r/${esc(m.sub)} · ` : ''}${ago(i.published_at || i.created_at)}${m.comments ? ` · ${m.comments} comments` : ''}</span></div>
+    <h4><a href="${esc(safeUrl(i.url))}" target="_blank" rel="noopener">${esc(i.title)}</a></h4>
+    ${i.summary ? `<p>${esc(i.summary.slice(0, 280))}</p>` : ''}
+    ${(m.signals || []).length ? `<div class="tags">${m.signals.map((s) => `<span class="tag plain">${esc(s)}</span>`).join('')}</div>` : ''}
+    ${i.so_what ? `<div class="so-what"><b>${esc(m.intentLabel || 'Reply angle')}:</b> ${esc(i.so_what)}</div>` : ''}
+    ${band.id === 'research' ? `<div class="muted small rd-next">${esc(band.action)}</div>` : ''}
+    <div class="rd-actions"><a class="btn small primary" href="${esc(safeUrl(i.url))}" target="_blank" rel="noopener">Open thread</a>${acts.map(([k, l]) => `<button class="btn small" data-id="${i.id}" data-st="${k}">${l}</button>`).join('')}</div>
+  </article>`;
 }
 
 // ---------- live ----------

@@ -8,6 +8,7 @@ import { runSource, runAllNow, runningSources, ingest } from './scheduler.js';
 import { agentCycle, lookalike } from './agent.js';
 import { stats as procStats, queueDepth } from './pipeline/processor.js';
 import * as llm from './pipeline/llm.js';
+import { REDDIT_SEGMENTS, REDDIT_INTENTS, REDDIT_BANDS, bandOf } from './pipeline/intel.js';
 import { bus, recentActivity, log } from './bus.js';
 import { sha1, fmtUsdM } from './util/text.js';
 import { hostCooldowns } from './util/http.js';
@@ -125,13 +126,15 @@ api.get('/brief', wrap((req, res) => {
     picks.push({ c, explore: true });
   }
   const evs = eventsFor(picks.map((p) => p.c.id));
-  const intel = q.all('SELECT * FROM intel WHERE created_at > ? ORDER BY importance DESC, published_at DESC LIMIT 8', checkpoint);
+  const intel = q.all(`SELECT * FROM intel WHERE created_at > ? AND category != 'voice' ORDER BY importance DESC, published_at DESC LIMIT 8`, checkpoint);
+  const redditHot = q.get(`SELECT COUNT(*) n FROM intel WHERE category = 'voice' AND status = 'new' AND score >= 80 AND created_at > ?`, checkpoint).n;
   res.json({
     checkpoint,
     totalNew: cands.filter((c) => c.first_seen_at > checkpoint).length,
     totalUpdated: cands.filter((c) => c.first_seen_at <= checkpoint).length,
     leads: picks.map(({ c, explore }) => ({ ...publicView(companyView(c, evs.get(c.id) || [], checkpoint)), explore })),
     intel,
+    redditHot,
   });
 }));
 
@@ -295,11 +298,61 @@ api.post('/leads/:id/lookalike', wrap((req, res) => {
 // ---------- intel ----------
 api.get('/intel', wrap((req, res) => {
   const cat = req.query.category;
-  const rows = cat
+  const rows = cat && cat !== 'voice'
     ? q.all('SELECT i.*, s.name source_name FROM intel i LEFT JOIN sources s ON s.id = i.source_id WHERE i.category = ? ORDER BY COALESCE(i.published_at, i.created_at) DESC LIMIT 150', cat)
-    : q.all('SELECT i.*, s.name source_name FROM intel i LEFT JOIN sources s ON s.id = i.source_id ORDER BY COALESCE(i.published_at, i.created_at) DESC LIMIT 150');
-  const counts = q.all('SELECT category, COUNT(*) n FROM intel GROUP BY category');
-  res.json({ items: rows, counts });
+    : q.all(`SELECT i.*, s.name source_name FROM intel i LEFT JOIN sources s ON s.id = i.source_id WHERE i.category != 'voice' ORDER BY COALESCE(i.published_at, i.created_at) DESC LIMIT 150`);
+  const counts = q.all(`SELECT category, COUNT(*) n FROM intel WHERE category != 'voice' GROUP BY category`);
+  res.json({ items: rows.map((r) => ({ ...r, meta: J(r.meta, {}) })), counts });
+}));
+
+// ---------- reddit (buyer intent) ----------
+api.get('/reddit', wrap((req, res) => {
+  const where = [`i.category = 'voice'`];
+  const p = [];
+  const st = req.query.status || 'open';
+  if (st === 'open') where.push(`i.status = 'new'`);
+  else if (['replied', 'lead', 'ignored'].includes(st)) { where.push('i.status = ?'); p.push(st); }
+  const band = REDDIT_BANDS.find((b) => b.id === req.query.band);
+  if (band) { const i = REDDIT_BANDS.indexOf(band); where.push('COALESCE(i.score, 0) >= ?'); p.push(band.min); if (i > 0) { where.push('COALESCE(i.score, 0) < ?'); p.push(REDDIT_BANDS[i - 1].min); } }
+  const rows = q.all(`SELECT i.*, s.name source_name FROM intel i LEFT JOIN sources s ON s.id = i.source_id WHERE ${where.join(' AND ')}
+    ORDER BY COALESCE(i.published_at, i.created_at) DESC LIMIT 300`, ...p).map((r) => ({ ...r, meta: J(r.meta, {}) }));
+  const items = rows.filter((r) => (!req.query.segment || r.meta.segment === req.query.segment) && (!req.query.intent || (r.meta.intents || []).includes(req.query.intent)));
+  const facet = (k) => rows.reduce((m, r) => { for (const v of [].concat(k === 'intent' ? r.meta.intents || [] : r.meta[k] || [])) m[v] = (m[v] || 0) + 1; return m; }, {});
+  const status = Object.fromEntries(q.all(`SELECT status, COUNT(*) n FROM intel WHERE category = 'voice' GROUP BY status`).map((r) => [r.status, r.n]));
+  res.json({ items: items.slice(0, 150).map((r) => ({ ...r, band: bandOf(r.score || 0) })), bands: REDDIT_BANDS, segments: REDDIT_SEGMENTS, intents: REDDIT_INTENTS, facets: { segment: facet('segment'), intent: facet('intent') }, status });
+}));
+
+// Weekly voice-of-customer report: what people ask, which providers they complain about, and which subs yield leads.
+api.get('/reddit/report', wrap((req, res) => {
+  const since = new Date(Date.now() - 7 * 86400000).toISOString();
+  const rows = q.all(`SELECT score, status, meta FROM intel WHERE category = 'voice' AND COALESCE(published_at, created_at) > ?`, since).map((r) => ({ ...r, meta: J(r.meta, {}) }));
+  const count = (fn) => rows.reduce((m, r) => { for (const k of [].concat(fn(r) || [])) m[k] = (m[k] || 0) + 1; return m; }, {});
+  const subs = {};
+  for (const r of rows) {
+    for (const sub of String(r.meta.sub || 'search').split('+')) {
+      const x = (subs[sub] ||= { posts: 0, high: 0, replied: 0, lead: 0 });
+      x.posts++; if ((r.score || 0) >= 80) x.high++; if (r.status === 'replied') x.replied++; if (r.status === 'lead') x.lead++;
+    }
+  }
+  res.json({
+    since, total: rows.length,
+    bands: count((r) => bandOf(r.score || 0).id),
+    intents: count((r) => r.meta.intents),
+    segments: count((r) => r.meta.segment),
+    fit: count((r) => r.meta.fit),
+    providers: count((r) => r.meta.providers),
+    complaints: count((r) => (r.meta.unhappy ? r.meta.providers : [])),
+    restricted: rows.filter((r) => r.meta.restricted).length,
+    subs: Object.entries(subs).map(([sub, v]) => ({ sub, ...v })).sort((a, b) => b.lead - a.lead || b.high - a.high || b.posts - a.posts).slice(0, 12),
+  });
+}));
+
+api.patch('/reddit/:id', wrap((req, res) => {
+  const st = req.body?.status;
+  if (!['new', 'replied', 'lead', 'ignored'].includes(st)) throw new Error('status must be new, replied, lead or ignored');
+  const r = q.run(`UPDATE intel SET status = ? WHERE id = ? AND category = 'voice'`, st, Number(req.params.id));
+  if (!r.changes) return res.status(404).json({ error: 'Not found' });
+  res.json({ ok: true });
 }));
 
 // ---------- sources ----------

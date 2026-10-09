@@ -7,20 +7,23 @@ if (fs.existsSync('.env')) process.loadEnvFile('.env');
 
 const { default: express } = await import('express');
 const { q, db } = await import('./db.js');
-const { SEED_SOURCES } = await import('./sources/index.js');
+const { SEED_SOURCES, RETIRED_SOURCES } = await import('./sources/index.js');
 const { startScheduler } = await import('./scheduler.js');
 const { startProcessor } = await import('./pipeline/processor.js');
+const { rebuildIntel } = await import('./pipeline/intel-store.js');
 const { startAgent } = await import('./agent.js');
 const { api } = await import('./routes.js');
 const { log } = await import('./bus.js');
 const llm = await import('./pipeline/llm.js');
 
-// Seed the source catalogue without overwriting anything the user changed.
+// Seed the source catalogue. System sources pick up improved names and queries; enabled and cadence stay as the user set them.
 for (const s of SEED_SOURCES) {
-  q.run(`INSERT OR IGNORE INTO sources(id, name, kind, category, params, cadence_min, min_cadence, max_cadence, created_by)
-    VALUES(?,?,?,?,?,?,?,?, 'system')`,
+  q.run(`INSERT INTO sources(id, name, kind, category, params, cadence_min, min_cadence, max_cadence, created_by)
+    VALUES(?,?,?,?,?,?,?,?, 'system')
+    ON CONFLICT(id) DO UPDATE SET name = excluded.name, params = excluded.params WHERE sources.created_by = 'system'`,
     s.id, s.name, s.kind, s.category || 'leads', JSON.stringify(s.params), s.cadence_min || 60, s.min_cadence || 15, s.max_cadence || 720);
 }
+for (const id of RETIRED_SOURCES) q.run(`UPDATE sources SET enabled = 0 WHERE id = ? AND created_by = 'system'`, id);
 
 // Public mode: any hosted environment (Railway sets PORT and RAILWAY_*), or an explicit HOST.
 const PUBLIC = Boolean(process.env.RAILWAY_ENVIRONMENT || process.env.PUBLIC_MODE === '1' || process.env.NODE_ENV === 'production');
@@ -115,6 +118,7 @@ if (!bound.length) {
 const u = llm.usage();
 log('boot', `Lead Intel running on http://localhost:${PORT} (${bound.join(', ')}) · LLM: ${u.provider === 'none' ? 'rules only (set GEMINI_API_KEY in .env)' : `${u.provider} ${u.model}`}`);
 startScheduler();
+rebuildIntel();
 startProcessor();
 if (process.env.DISABLE_AGENT !== '1') startAgent();
 
