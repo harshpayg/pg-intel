@@ -218,6 +218,7 @@ function renderDrawer(l) {
     <div class="panel"><div class="panel-head"><h3>Why this company</h3></div><div>${esc(l.why || '')}</div>
       ${l.signals.length ? `<div class="tags" style="margin-top:10px">${l.signals.map((s) => `<span class="tag">${esc(s)}</span>`).join('')}</div>` : ''}</div>
     ${l.pitch ? `<div class="panel"><div class="panel-head"><h3>Outreach angle</h3></div><div class="pitch"><button class="btn small" id="dCopy">Copy</button><div style="padding-right:60px">${esc(l.pitch)}</div></div></div>` : ''}
+    <div class="panel tr-panel" id="dTraction"><div class="skeleton" style="height:60px"></div></div>
     ${peoplePanel(l)}
     <div class="panel"><div class="panel-head"><h3>Score breakdown</h3><span class="muted small">weights editable in Config</span></div>
       ${pos.map((b) => `<div class="bd-row"><span>${esc(b.label)}</span><div class="bar"><i style="width:${b.max ? (b.points / b.max) * 100 : 0}%"></i></div><span class="muted">${b.points}/${b.max}</span><small>${esc(b.detail)}</small></div>`).join('')}
@@ -244,6 +245,7 @@ function renderDrawer(l) {
     <div class="panel"><div class="panel-head"><h3>Notes</h3><span class="muted small" id="noteState"></span></div><textarea class="input" id="dNotes" rows="4" placeholder="Context, contacts, next steps…">${esc(l.notes)}</textarea></div>
   </div>`;
 
+  loadTraction(l);
   const patch = async (body, msg) => { await api(`/leads/${l.id}`, { method: 'PATCH', body }); if (msg) toast(msg); const fresh = await api(`/leads/${l.id}`); renderDrawer(fresh); };
   $('#dClose').onclick = closeDrawer;
   $('#dStatus').onchange = (ev) => patch({ status: ev.target.value }, `Marked ${ev.target.value}`);
@@ -330,6 +332,146 @@ function closeDrawer() {
 }
 $('#drawerWrap').addEventListener('click', (e) => { if (e.target.id === 'drawerWrap') closeDrawer(); });
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeDrawer(); });
+
+// ---------- traction (DataForSEO) ----------
+const TR_STEPS = [['countries', 'Traffic by country'], ['trend', '12-month trend'], ['keywords', 'Top keywords'], ['tech', 'Site technology']];
+const REGION_NAME = (() => { try { const d = new Intl.DisplayNames(['en'], { type: 'region' }); return (cc) => { try { return d.of(cc); } catch { return cc; } }; } catch { return (cc) => cc; } })();
+const compact = (n) => (n >= 1e6 ? `${(n / 1e6).toFixed(n >= 1e7 ? 0 : 1)}M` : n >= 1e3 ? `${(n / 1e3).toFixed(n >= 1e4 ? 0 : 1)}K` : String(Math.round(n)));
+const pct = (x) => `${Math.round(x * 100)}%`;
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const tr = { id: null, steps: {} };
+
+async function loadTraction(l) {
+  tr.id = l.id;
+  const r = await api(`/leads/${l.id}/traction`).catch(() => null);
+  if (tr.id !== l.id || !$('#dTraction')) return;
+  renderTraction(l, r);
+}
+
+function renderTraction(l, r, state) {
+  const el = $('#dTraction');
+  if (!el) return;
+  const t = r?.traction;
+  const head = (extra = '') => `<div class="panel-head"><div><h3>Traction</h3><div class="muted small">Web traffic, growth and site tech, estimated by DataForSEO</div></div>${extra}</div>`;
+  if (state === 'loading') {
+    el.innerHTML = `${head()}<div class="tr-loading">
+      <div class="tr-steps">${TR_STEPS.map(([k, label]) => `<div class="tr-step ${tr.steps[k] || 'wait'}" data-step="${k}"><span class="tr-ico" aria-hidden="true"></span>${label}</div>`).join('')}</div>
+      <div class="tr-skel"><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton wide"></div></div>
+      <div class="muted small">Looking up ${esc(l.domain)}. This usually takes 5 to 15 seconds.</div></div>`;
+    return;
+  }
+  if (!r?.configured) { el.innerHTML = `${head()}<div class="tr-idle"><p class="muted">Add <code>DATAFORSEO_LOGIN</code> and <code>DATAFORSEO_PASSWORD</code> to the server environment to enable traction insights.</p></div>`; return; }
+  if (state?.error || (!t?.data && t?.error)) {
+    el.innerHTML = `${head()}<div class="callout danger"><b>Could not get traction data.</b> ${esc(state?.error || t.error)}</div><div class="tr-cta"><button class="btn small" id="trGo">Try again</button></div>`;
+    $('#trGo').onclick = () => runTraction(l, true);
+    return;
+  }
+  if (!t?.data) {
+    const noDomain = !r.domain;
+    el.innerHTML = `${head()}<div class="tr-idle">
+      <ul class="tr-preview"><li><b>Where traffic comes from</b><span>share of visitors outside India</span></li><li><b>Growth</b><span>12-month trend in the top market</span></li><li><b>What they rank for</b><span>top keywords and positions</span></li><li><b>Payment stack</b><span>gateways and platforms on the site</span></li></ul>
+      <div class="tr-cta"><button class="btn primary" id="trGo" ${noDomain ? 'disabled' : ''}>Get traction insights</button>
+      <span class="muted small">${noDomain ? 'Needs the company website: run Research now first.' : `4 API calls for ${esc(r.domain)} · cached for 7 days · ${r.usage.lookups} of ${r.usage.cap} lookups used today`}</span></div></div>`;
+    if (!noDomain) $('#trGo').onclick = () => runTraction(l, false);
+    return;
+  }
+  const d = t.data, o = d.overview;
+  const h = d.history || [];
+  const g3 = h.length >= 4 && h[h.length - 4].etv > 20 ? (h.at(-1).etv - h[h.length - 4].etv) / h[h.length - 4].etv : null;
+  const top = o.countries.slice(0, 8);
+  const maxEtv = top[0]?.etv || 1;
+  const tech = d.tech;
+  el.innerHTML = `${head(`<button class="link-btn" id="trRefresh">Refresh</button>`)}
+    <ul class="tr-insights">${d.insights.map((x) => `<li class="${x.tone}">${esc(x.text)}</li>`).join('')}</ul>
+    <div class="tr-tiles">
+      <div class="tr-tile"><span>Monthly search visits</span><b>${compact(o.total)}</b><small>organic, all countries</small></div>
+      <div class="tr-tile"><span>Outside India</span><b>${o.intlShare == null ? 'n/a' : pct(o.intlShare)}</b><small>of search traffic</small></div>
+      <div class="tr-tile"><span>3-month trend</span><b class="${g3 == null ? '' : g3 >= 0 ? 'up' : 'down'}">${g3 == null ? 'n/a' : `${g3 >= 0 ? '+' : ''}${pct(g3)}`}</b><small>${d.market?.cc ? `in ${esc(REGION_NAME(d.market.cc))}` : 'top market'}</small></div>
+      <div class="tr-tile"><span>Ranking keywords</span><b>${compact(o.keywords)}</b><small>${o.isNew || o.isLost ? `+${compact(o.isNew)} new · ${compact(o.isLost)} lost` : 'across all countries'}</small></div>
+    </div>
+    ${top.length ? `<div class="tr-sec"><h4>Where the traffic comes from</h4><div class="tr-geo">${top.map((c) => `<div class="tr-geo-row" title="${esc(REGION_NAME(c.cc))}: ${compact(c.etv)} est. visits a month (${pct(c.share)})">
+      <span class="tr-cc">${esc(c.cc)}</span><span class="tr-geo-name">${esc(REGION_NAME(c.cc))}</span>
+      <span class="hb-track"><span class="hb-fill ${c.cc === 'IN' ? 'home' : ''}" style="width:${Math.max(3, (c.etv / maxEtv) * 100)}%"></span></span>
+      <span class="tr-geo-val">${compact(c.etv)}</span><span class="tr-geo-pct">${pct(c.share)}</span></div>`).join('')}</div>
+      ${o.countries.length > 8 ? `<div class="muted small tr-more">+ ${o.countries.length - 8} more countries</div>` : ''}</div>` : ''}
+    ${h.length >= 2 ? `<div class="tr-sec"><h4>Search traffic over 12 months <span class="muted">· ${esc(REGION_NAME(d.market.cc))}</span></h4>${trendChart(h)}</div>` : ''}
+    ${d.keywords?.length ? `<div class="tr-sec"><h4>Top keywords <span class="muted">· ${esc(REGION_NAME(d.market.cc))}</span></h4>
+      <div class="tr-kw"><div class="tr-kw-row th"><span>Keyword</span><span>Position</span><span>Searches/mo</span><span>Visits/mo</span></div>
+      ${d.keywords.map((k) => `<div class="tr-kw-row"><span class="trunc" title="${esc(k.keyword)}">${k.url ? `<a href="${esc(safeUrl(k.url))}" target="_blank" rel="noopener">${esc(k.keyword)}</a>` : esc(k.keyword)}</span><span>${k.position ?? '-'}</span><span>${compact(k.volume)}</span><span>${compact(k.etv)}</span></div>`).join('')}</div></div>` : ''}
+    ${tech && (tech.payments.length || tech.commerce.length || tech.other.length) ? `<div class="tr-sec"><h4>Site technology</h4><div class="tags">
+      ${tech.payments.map((n) => `<span class="tag pay">${esc(n)}</span>`).join('')}${tech.commerce.map((n) => `<span class="tag">${esc(n)}</span>`).join('')}${tech.other.map((n) => `<span class="tag plain">${esc(n)}</span>`).join('')}</div>
+      ${tech.payments.length ? '<div class="muted small tr-more">Highlighted: payment providers</div>' : ''}</div>` : ''}
+    <div class="tr-foot">Estimates for ${esc(d.target)} from DataForSEO · updated ${ago(t.fetchedAt)}${t.stale ? ' · <b>older than 7 days</b>' : ''}</div>`;
+  $('#trRefresh').onclick = () => runTraction(l, true);
+  bindTrendHover();
+}
+
+// Single-series line + area, recessive grid, hover crosshair with a tooltip (per the dataviz rules).
+function trendChart(h) {
+  // Drawn at the panel's real width so axis text stays legible on phones.
+  const W = Math.max(300, Math.round(($('#dTraction')?.clientWidth || 672) - 32)), H = W < 500 ? 150 : 170, P = { l: 44, r: 12, t: 12, b: 24 };
+  const max = Math.max(...h.map((p) => p.etv), 1) * 1.1;
+  const x = (i) => P.l + (i * (W - P.l - P.r)) / (h.length - 1);
+  const y = (v) => P.t + (H - P.t - P.b) * (1 - v / max);
+  const line = h.map((p, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(p.etv).toFixed(1)}`).join('');
+  const area = `${line}L${x(h.length - 1).toFixed(1)},${y(0)}L${x(0).toFixed(1)},${y(0)}Z`;
+  const ticks = [0, 0.5, 1].map((f) => max * f / 1.1);
+  const pts = h.map((p, i) => ({ x: x(i), y: y(p.etv), label: `${MONTHS[p.m - 1]} ${p.y}`, v: p.etv }));
+  return `<div class="tr-chart" data-w="${W}" data-h="${H}" data-pts='${esc(JSON.stringify(pts))}'>
+    <svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Monthly search traffic, ${esc(pts[0].label)} to ${esc(pts.at(-1).label)}">
+      ${ticks.map((v) => `<line class="grid" x1="${P.l}" x2="${W - P.r}" y1="${y(v)}" y2="${y(v)}"/><text class="ax" x="${P.l - 8}" y="${y(v) + 4}" text-anchor="end">${compact(v)}</text>`).join('')}
+      ${pts.map((p, i) => (i % 2 === (pts.length - 1) % 2 ? `<text class="ax" x="${p.x}" y="${H - 6}" text-anchor="middle">${p.label.slice(0, 3)}</text>` : '')).join('')}
+      <path class="area" d="${area}"/><path class="line" d="${line}"/>
+      <line class="cross" x1="0" x2="0" y1="${P.t}" y2="${y(0)}" visibility="hidden"/><circle class="dot" r="4.5" visibility="hidden"/>
+    </svg><div class="tr-tip" hidden></div></div>`;
+}
+
+function bindTrendHover() {
+  const box = $('#dTraction .tr-chart');
+  if (!box) return;
+  const pts = JSON.parse(box.dataset.pts);
+  const W = Number(box.dataset.w), H = Number(box.dataset.h);
+  const svg = box.querySelector('svg'), tip = box.querySelector('.tr-tip'), cross = svg.querySelector('.cross'), dot = svg.querySelector('.dot');
+  const show = (clientX) => {
+    const r = svg.getBoundingClientRect();
+    const vx = ((clientX - r.left) / r.width) * W;
+    const p = pts.reduce((a, b) => (Math.abs(b.x - vx) < Math.abs(a.x - vx) ? b : a));
+    cross.setAttribute('x1', p.x); cross.setAttribute('x2', p.x); cross.setAttribute('visibility', 'visible');
+    dot.setAttribute('cx', p.x); dot.setAttribute('cy', p.y); dot.setAttribute('visibility', 'visible');
+    tip.hidden = false;
+    tip.innerHTML = `<b>${compact(p.v)}</b> visits<br><span>${esc(p.label)}</span>`;
+    const left = (p.x / W) * r.width;
+    tip.style.left = `${Math.min(r.width - 90, Math.max(0, left - 45))}px`;
+    tip.style.top = `${(p.y / H) * r.height - 54}px`;
+  };
+  svg.addEventListener('mousemove', (e) => show(e.clientX));
+  svg.addEventListener('touchstart', (e) => show(e.touches[0].clientX), { passive: true });
+  svg.addEventListener('mouseleave', () => { tip.hidden = true; cross.setAttribute('visibility', 'hidden'); dot.setAttribute('visibility', 'hidden'); });
+}
+
+async function runTraction(l, refresh) {
+  tr.id = l.id;
+  tr.steps = {};
+  renderTraction(l, null, 'loading');
+  try {
+    const r = await api(`/leads/${l.id}/traction`, { method: 'POST', body: { refresh } });
+    if (tr.id !== l.id) return;
+    renderTraction(l, { configured: true, domain: l.domain, usage: r.usage, traction: r.traction });
+    toast('Traction insights ready');
+  } catch (e) {
+    if (tr.id !== l.id) return;
+    renderTraction(l, { configured: true, domain: l.domain }, { error: e.message });
+  }
+}
+
+// Live step updates from the server while a lookup runs.
+function onTractionEvent(ev) {
+  const m = JSON.parse(ev.data || '{}');
+  if (m.id !== tr.id) return;
+  tr.steps[m.step] = m.state;
+  const row = $(`#dTraction .tr-step[data-step="${m.step}"]`);
+  if (row) row.className = `tr-step ${m.state}`;
+}
 
 // ---------- intel ----------
 const CAT_LABEL = { regulatory: 'Regulatory', competitor: 'Competitor', market: 'Market', payglocal: 'PayGlocal' };
@@ -787,6 +929,7 @@ function connectStream() {
   let statsTimer;
   const refreshStats = () => { clearTimeout(statsTimer); statsTimer = setTimeout(loadStats, 800); };
   es.addEventListener('stats', refreshStats);
+  es.addEventListener('traction', onTractionEvent);
   es.addEventListener('source', () => { refreshStats(); if (state.view === 'sources') { clearTimeout(window.__srcT); window.__srcT = setTimeout(loadSources, 1200); } });
   es.onerror = () => { $('#engine').className = 'engine off'; $('#engineText').textContent = 'Reconnecting…'; };
   es.onopen = () => loadStats();

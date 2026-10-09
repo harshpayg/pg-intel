@@ -72,7 +72,7 @@ There are no automated tests yet.
 
 ## API
 
-`GET /api/brief`, `POST /api/brief/ack`, `GET /api/leads?q&sector&stage&minScore&status&days&intl&sort`, `GET /api/leads/:id`, `PATCH /api/leads/:id {status,notes,feedback}`, `POST /api/leads/:id/enrich`, `POST /api/leads/:id/lookalike`, `POST /api/leads/:id/contacts`, `PATCH|DELETE /api/contacts/:id`, `POST /api/contacts/:id/find-email`, `GET /api/leads.csv`, `GET /api/intel`, `GET /api/reddit?status&band&segment&intent`, `GET /api/reddit/report`, `PATCH /api/reddit/:id {status}`, `GET|POST|PATCH|DELETE /api/sources`, `POST /api/scan`, `POST /api/agent/run`, `GET|PUT /api/config`, `POST /api/config/preview`, `GET /api/stream` (SSE).
+`GET /api/brief`, `POST /api/brief/ack`, `GET /api/leads?q&sector&stage&minScore&status&days&intl&sort`, `GET /api/leads/:id`, `PATCH /api/leads/:id {status,notes,feedback}`, `POST /api/leads/:id/enrich`, `POST /api/leads/:id/lookalike`, `GET|POST /api/leads/:id/traction`, `POST /api/leads/:id/contacts`, `PATCH|DELETE /api/contacts/:id`, `POST /api/contacts/:id/find-email`, `GET /api/leads.csv`, `GET /api/intel`, `GET /api/reddit?status&band&segment&intent`, `GET /api/reddit/report`, `PATCH /api/reddit/:id {status}`, `GET|POST|PATCH|DELETE /api/sources`, `POST /api/scan`, `POST /api/agent/run`, `GET|PUT /api/config`, `POST /api/config/preview`, `GET /api/stream` (SSE).
 
 The original single-file prototype is in `legacy/`.
 
@@ -83,6 +83,7 @@ The original single-file prototype is in `legacy/`.
 3. **Variables** (service > Variables):
    - `AUTH_PASSWORD` (required). Users get a branded password-only sign-in page and a 30-day session cookie; `/api/health` stays open. Optionally set `SESSION_SECRET` (changing it or the password signs everyone out).
    - `GEMINI_API_KEY`, `GEMINI_MODEL` (optional but recommended).
+   - `DATAFORSEO_LOGIN`, `DATAFORSEO_PASSWORD` (optional; enables traction insights on each lead, about $0.04 per lookup, cached 7 days, capped by `DATAFORSEO_DAILY_CAP`).
    - `REDDIT_CLIENT_ID`, `REDDIT_CLIENT_SECRET` (recommended; anonymous Reddit is often blocked from cloud IPs).
    - Do not set `PORT`; Railway provides it.
 4. Generate a public domain under Settings > Networking.

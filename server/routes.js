@@ -14,6 +14,7 @@ import { sha1, fmtUsdM } from './util/text.js';
 import { hostCooldowns } from './util/http.js';
 import { targetPlan, contactsOf, saveContacts, suppressContact } from './pipeline/people.js';
 import { findEmail, providerStatus } from './pipeline/email-finders.js';
+import { fetchTraction, cachedTraction, usageToday, configured as tractionConfigured, ApiError as TractionError } from './pipeline/traction.js';
 
 export const api = express.Router();
 const wrap = (fn) => (req, res) => Promise.resolve().then(() => fn(req, res)).catch((e) => res.status(400).json({ error: e.message }));
@@ -290,6 +291,23 @@ api.post('/leads/:id/enrich', wrap(async (req, res) => {
   res.json({ ok: true, enrichment: enr });
 }));
 
+// ---------- traction (DataForSEO) ----------
+api.get('/leads/:id/traction', wrap((req, res) => {
+  const c = q.get('SELECT id, domain FROM companies WHERE id = ?', req.params.id);
+  if (!c) return res.status(404).json({ error: 'Not found' });
+  res.json({ configured: tractionConfigured(), domain: c.domain, usage: usageToday(), traction: cachedTraction(c.id) });
+}));
+
+api.post('/leads/:id/traction', wrap(async (req, res) => {
+  try {
+    const t = await fetchTraction(Number(req.params.id), { refresh: Boolean(req.body?.refresh) });
+    res.json({ ok: true, traction: t, usage: usageToday() });
+  } catch (e) {
+    if (e instanceof TractionError) return res.status(400).json({ error: e.message });
+    throw e;
+  }
+}));
+
 api.post('/leads/:id/lookalike', wrap((req, res) => {
   const ids = lookalike(Number(req.params.id));
   res.json({ ok: true, sources: ids });
@@ -466,7 +484,7 @@ api.get('/stream', (req, res) => {
   res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache', connection: 'keep-alive', 'x-accel-buffering': 'no' });
   res.write('retry: 3000\n\n');
   const send = (event) => (data) => res.write(`event: ${event}\ndata: ${JSON.stringify(data ?? {})}\n\n`);
-  const handlers = { activity: send('activity'), lead: send('lead'), intel: send('intel'), source: send('source'), stats: send('stats') };
+  const handlers = { activity: send('activity'), lead: send('lead'), intel: send('intel'), source: send('source'), stats: send('stats'), traction: send('traction') };
   for (const [k, h] of Object.entries(handlers)) bus.on(k, h);
   const ping = setInterval(() => res.write(': ping\n\n'), 25000);
   req.on('close', () => {
