@@ -56,7 +56,7 @@ export const DEFAULT_CONFIG = {
   contacts: {
     smallTeamMax: 50,          // up to this many people: go to the founder / CEO / CTO
     midTeamMax: 200,           // up to this: finance / payments owner; above: CFO / treasury
-    emailProvider: 'auto',     // auto | apollo | hunter (only used when its API key is set)
+    emailProvider: 'auto',     // auto | sprouts | apollo | hunter (only used when its credentials are set)
     monthlyLookupCap: 50,      // paid email lookups per month across providers
     autoFindEmailMinScore: 0,  // 0 = only on click; otherwise auto-find for the primary contact of leads at/above this score
   },

@@ -116,7 +116,7 @@ if (!bound.length) {
 }
 
 const u = llm.usage();
-log('boot', `Lead Intel running on http://localhost:${PORT} (${bound.join(', ')}) · LLM: ${u.provider === 'none' ? 'rules only (set GEMINI_API_KEY in .env)' : `${u.provider} ${u.model}`}`);
+log('boot', `Lead Intel running on http://localhost:${PORT} (${bound.join(', ')}) · LLM: ${u.provider === 'none' ? 'rules only (set GROQ_API_KEY or GEMINI_API_KEY in .env)' : `${u.provider} ${u.model}`}`);
 startScheduler();
 rebuildIntel();
 startProcessor();

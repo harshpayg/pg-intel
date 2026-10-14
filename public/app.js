@@ -57,7 +57,7 @@ async function loadStats() {
     const s = await api('/stats');
     state.stats = s;
     state.threshold = s.threshold;
-    const llm = s.llm.provider === 'none' ? 'Rules engine' : `Gemini · ${s.llm.calls}/${s.llm.cap} calls`;
+    const llm = s.llm.provider === 'none' ? 'Rules engine' : `${s.llm.label || s.llm.provider} · ${s.llm.calls}/${s.llm.cap} calls`;
     const busy = s.running.length || s.queue > 0;
     $('#engine').className = `engine ${busy ? 'busy' : ''}`;
     $('#engineText').textContent = `${busy ? `Working · ${s.running.length} fetching · ${s.queue} queued` : 'Live'} · ${llm}`;
@@ -219,6 +219,7 @@ function renderDrawer(l) {
       ${l.signals.length ? `<div class="tags" style="margin-top:10px">${l.signals.map((s) => `<span class="tag">${esc(s)}</span>`).join('')}</div>` : ''}</div>
     ${l.pitch ? `<div class="panel"><div class="panel-head"><h3>Outreach angle</h3></div><div class="pitch"><button class="btn small" id="dCopy">Copy</button><div style="padding-right:60px">${esc(l.pitch)}</div></div></div>` : ''}
     <div class="panel tr-panel" id="dTraction"><div class="skeleton" style="height:60px"></div></div>
+    ${l.sprouts?.configured ? '<div class="panel tr-panel" id="dSprouts"><div class="skeleton" style="height:60px"></div></div>' : ''}
     ${peoplePanel(l)}
     <div class="panel"><div class="panel-head"><h3>Score breakdown</h3><span class="muted small">weights editable in Config</span></div>
       ${pos.map((b) => `<div class="bd-row"><span>${esc(b.label)}</span><div class="bar"><i style="width:${b.max ? (b.points / b.max) * 100 : 0}%"></i></div><span class="muted">${b.points}/${b.max}</span><small>${esc(b.detail)}</small></div>`).join('')}
@@ -246,6 +247,7 @@ function renderDrawer(l) {
   </div>`;
 
   loadTraction(l);
+  if (l.sprouts?.configured) loadSprouts(l);
   const patch = async (body, msg) => { await api(`/leads/${l.id}`, { method: 'PATCH', body }); if (msg) toast(msg); const fresh = await api(`/leads/${l.id}`); renderDrawer(fresh); };
   $('#dClose').onclick = closeDrawer;
   $('#dStatus').onchange = (ev) => patch({ status: ev.target.value }, `Marked ${ev.target.value}`);
@@ -263,8 +265,8 @@ function renderDrawer(l) {
 // ---------- decision makers ----------
 const liSearch = (q) => `https://www.linkedin.com/search/results/people/?keywords=${encodeURIComponent(q)}`;
 const gSearch = (q) => `https://www.google.com/search?q=${encodeURIComponent(q)}`;
-const SRC_LABEL = { news: 'news', article: 'article', website: 'company site', yc: 'Y Combinator', apollo: 'Apollo', manual: 'added manually' };
-const TEAM_SRC = { yc: 'Y Combinator', apollo: 'Apollo', website: 'company site', article: 'article', news: 'news', stage: 'estimated from funding stage', leadership: 'estimated from leadership size', manual: 'manual' };
+const SRC_LABEL = { sprouts: 'Sprouts', news: 'news', article: 'article', website: 'company site', yc: 'Y Combinator', apollo: 'Apollo', manual: 'added manually' };
+const TEAM_SRC = { yc: 'Y Combinator', apollo: 'Apollo', sprouts: 'Sprouts', website: 'company site', article: 'article', news: 'news', stage: 'estimated from funding stage', leadership: 'estimated from leadership size', manual: 'manual' };
 
 function peoplePanel(l) {
   const prov = l.emailProviders;
@@ -281,7 +283,8 @@ function peoplePanel(l) {
         <div><b>${esc(p.name)}</b>${p.primary ? ' <span class="badge new">best fit</span>' : ''}${p.dnc ? ' <span class="badge dnc-b">do not contact</span>' : ''}</div>
         <div class="muted small">${esc(p.role || 'Role unknown')} · <a class="link" href="${esc(safeUrl(p.sourceUrl))}" target="_blank" rel="noopener" title="${esc(p.evidence || '')}">from ${esc(SRC_LABEL[p.source] || p.source)}</a></div>
         <div class="person-links small">${emailBit}
-          <a class="link" href="${esc(p.linkedin ? safeUrl(p.linkedin) : liSearch(`${p.name} ${l.name}`))}" target="_blank" rel="noopener">${p.linkedin ? 'LinkedIn profile' : 'Find on LinkedIn'}</a>
+          <a class="link" href="${esc(p.linkedin ? safeUrl(p.linkedin) : liSearch(`${p.name} ${l.name}`))}" target="_blank" rel="noopener">${p.linkedin ? 'LinkedIn profile' : 'Search LinkedIn'}</a>
+          ${!p.linkedin && !p.dnc && l.sprouts?.configured ? `<button class="link-btn" data-li="${p.id}" title="One Sprouts search for this person by name">Get LinkedIn via Sprouts</button>` : ''}
           <a class="link" href="${esc(gSearch(`"${p.name}" "${l.name}"`))}" target="_blank" rel="noopener">Google</a></div>
       </div>
       <div class="person-actions">
@@ -294,18 +297,32 @@ function peoplePanel(l) {
   return `<div class="panel"><div class="panel-head"><h3>Decision makers</h3><span class="muted small" title="${esc(l.team?.evidence || '')}">${teamTxt}</span></div>
     <div class="target"><b>Reach out to:</b> ${esc(l.target.roles.join(' → '))}<div class="muted small">${esc(l.target.reason)}</div></div>
     ${people.length ? people.map(person).join('') : `<div class="muted small" style="margin:10px 0">No named people yet. ${l.enrichedAt ? 'Research found none on the article or site.' : 'Run "Research now" to read the article and the About/Team pages.'}</div>`}
+    ${!people.some((p) => !p.dnc) && l.sprouts?.configured && l.domain ? `<div class="tr-cta" style="margin:4px 0 10px"><button class="btn small" id="spPeople">Find decision makers with Sprouts</button><span class="muted small">1 search, up to 3 founders or finance leaders</span></div>` : ''}
     <div class="role-links"><span class="muted small">Search LinkedIn:</span> ${roleLinks}</div>
     ${l.inboxes?.length ? `<div class="small" style="margin-top:8px"><span class="muted">Company inboxes:</span> ${l.inboxes.map((e) => `<a href="mailto:${esc(e)}">${esc(e)}</a>`).join(', ')}</div>` : ''}
     ${jobs?.count != null ? `<div class="small" style="margin-top:6px"><span class="muted">Hiring:</span> <a class="link" href="${esc(safeUrl(jobs.url))}" target="_blank" rel="noopener">${jobs.count} open roles${jobs.ats ? ` on ${esc(jobs.ats)}` : ''}</a>${jobs.titles?.length ? ` <span class="muted">(${esc(jobs.titles.slice(0, 3).join(', '))}${jobs.titles.length > 3 ? '…' : ''})</span>` : ''}</div>` : ''}
     <details class="add-person"><summary class="small link">Add a person</summary>
       <form id="addPerson" class="add-grid" style="margin-top:8px"><input class="input" name="name" placeholder="Full name" required><input class="input" name="role" placeholder="Role (e.g. CFO)"><input class="input" name="email" type="email" placeholder="Work email (optional)"><button class="btn small primary">Add</button></form>
     </details>
-    <div class="muted small" style="margin-top:10px">${canFind ? `Verified email lookups: ${esc(prov.configured.map((p) => p.label).join(', '))} · ${prov.used}/${prov.cap} this month.` : 'Verified email lookup is off: add APOLLO_API_KEY or HUNTER_API_KEY to enable it.'} Each person shows where they were found; removing someone keeps them out of future research.</div>
+    <div class="muted small" style="margin-top:10px">${canFind ? `Verified email lookups: ${esc(prov.configured.map((p) => p.label).join(', '))} · ${prov.used}/${prov.cap} this month${l.sprouts?.configured ? ` · ${sproutsNote(l.sprouts)}` : ''}.` : 'Verified email lookup is off: add Sprouts, APOLLO_API_KEY or HUNTER_API_KEY to enable it.'} Each person shows where they were found; removing someone keeps them out of future research.</div>
   </div>`;
 }
 
 function bindPeople(l) {
   const refresh = async () => renderDrawer(await api(`/leads/${l.id}`));
+  $$('[data-li]', $('#drawer')).forEach((b) => (b.onclick = async () => {
+    b.disabled = true; b.textContent = 'Searching Sprouts…';
+    try { const r = await api(`/contacts/${b.dataset.li}/linkedin`, { method: 'POST' }); toast(r.linkedin ? 'LinkedIn profile found' : 'Sprouts has no profile for this person'); }
+    catch (e) { toast(e.message); }
+    refresh();
+  }));
+  const sp = $('#spPeople');
+  if (sp) sp.onclick = async () => {
+    sp.disabled = true; sp.textContent = 'Searching Sprouts…';
+    try { const r = await api(`/leads/${l.id}/sprouts/people`, { method: 'POST' }); toast(r.found ? `Sprouts found ${r.found} ${r.searched === 'founders' ? 'founder' : 'finance leader'}${r.found > 1 ? 's' : ''}` : `Sprouts has no ${r.searched} listed here`); }
+    catch (e) { toast(e.message); }
+    refresh();
+  };
   $$('[data-find]', $('#drawer')).forEach((b) => (b.onclick = async () => {
     b.disabled = true; b.textContent = 'Looking up…';
     try { const r = await api(`/contacts/${b.dataset.find}/find-email`, { method: 'POST' }); toast(r.found ? `Found a ${r.status} email via ${r.provider}` : r.note || `No verified email at ${r.provider}`); }
@@ -471,6 +488,67 @@ function onTractionEvent(ev) {
   tr.steps[m.step] = m.state;
   const row = $(`#dTraction .tr-step[data-step="${m.step}"]`);
   if (row) row.className = `tr-step ${m.state}`;
+}
+
+// ---------- Sprouts company profile ----------
+const usd = (n) => (n == null ? null : n >= 1e9 ? `$${(n / 1e9).toFixed(1)}B` : n >= 1e6 ? `$${(n / 1e6).toFixed(n >= 1e7 ? 0 : 1)}M` : n >= 1e3 ? `$${Math.round(n / 1e3)}K` : `$${n}`);
+const sproutsNote = (u) => `${u.searchesToday} of ${u.searchCap} Sprouts searches used today`;
+
+async function loadSprouts(l) {
+  const el = $('#dSprouts');
+  if (!el) return;
+  const r = await api(`/leads/${l.id}/sprouts`).catch(() => null);
+  if (!$('#dSprouts') || tr.id !== l.id) return;
+  renderSprouts(l, r);
+}
+
+function renderSprouts(l, r, state) {
+  const el = $('#dSprouts');
+  if (!el) return;
+  const head = (extra = '') => `<div class="panel-head"><div><h3>Company profile</h3><div class="muted small">Headcount, funding and global presence from Sprouts</div></div>${extra}</div>`;
+  if (state === 'loading') { el.innerHTML = `${head()}<div class="tr-skel"><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div></div>`; return; }
+  if (state?.error) {
+    el.innerHTML = `${head()}<div class="callout danger"><b>Could not get the profile.</b> ${esc(state.error)}</div>`;
+    return;
+  }
+  const s = r?.snapshot;
+  if (!s) {
+    const noDomain = !l.domain;
+    el.innerHTML = `${head()}<div class="tr-cta" style="margin-top:0"><button class="btn" id="spGo" ${noDomain ? 'disabled' : ''}>Get company profile</button>
+      <span class="muted small">${noDomain ? 'Needs the company website: run Research now first.' : `1 Sprouts search for ${esc(l.domain)} · cached 30 days · ${sproutsNote(r.usage)}`}</span></div>`;
+    if (!noDomain) $('#spGo').onclick = () => runSprouts(l, false);
+    return;
+  }
+  if (!s.found) {
+    el.innerHTML = `${head()}<p class="muted small" style="margin:0">Sprouts has no record for ${esc(l.domain)} (checked ${ago(s.fetchedAt)}). It will not be searched again for 30 days.</p>`;
+    return;
+  }
+  const d = s.data || {};
+  const funding = [d.fundingStage, usd(d.totalFunding) && `${usd(d.totalFunding)} total`, d.lastFundingDate && `last ${fmtDate(d.lastFundingDate)}`].filter(Boolean).join(' · ');
+  const facts = [['Employees', d.employees != null ? d.employees.toLocaleString('en-IN') : null], ['Revenue', usd(d.revenue)], ['Founded', d.founded], ['Headquarters', typeof d.hq === 'string' ? d.hq : d.hq?.country || d.hq?.city || null],
+    ['Industry', Array.isArray(d.industry) ? d.industry.join(', ') : d.industry], ['Funding', funding || null], ['Business type', Array.isArray(d.businessType) ? d.businessType.join(', ') : d.businessType], ['Open jobs', d.openJobs]].filter(([, v]) => v != null && v !== '');
+  const countries = d.countries || [];
+  const maxE = Math.max(...countries.map((c) => c.employees || 0), 1);
+  const abroad = countries.filter((c) => !/^india$/i.test(c.country));
+  el.innerHTML = `${head(`<button class="link-btn" id="spRefresh">Refresh</button>`)}
+    ${abroad.length ? `<ul class="tr-insights"><li class="good">Staff in ${abroad.length} countr${abroad.length > 1 ? 'ies' : 'y'} outside India (${esc(abroad.slice(0, 3).map((c) => c.country).join(', '))}): a real international footprint.</li></ul>` : ''}
+    ${facts.length ? `<dl class="dt-facts sp-facts">${facts.map(([k, v]) => `<div><dt>${k}</dt><dd>${esc(v)}</dd></div>`).join('')}</dl>` : '<p class="muted small">Sprouts returned the company but no profile fields we recognise yet.</p>'}
+    ${countries.length ? `<div class="tr-sec"><h4>Employees by country</h4><div class="tr-geo">${countries.map((c) => `<div class="tr-geo-row sp-row"><span class="tr-geo-name">${esc(c.country)}</span>
+      <span class="hb-track"><span class="hb-fill ${/^india$/i.test(c.country) ? 'home' : ''}" style="width:${Math.max(3, ((c.employees || 0) / maxE) * 100)}%"></span></span><span class="tr-geo-val">${c.employees ?? '-'}</span></div>`).join('')}</div></div>` : ''}
+    ${d.technologies?.length ? `<div class="tr-sec"><h4>Technology</h4><div class="tags">${d.technologies.map((t) => `<span class="tag ${/stripe|paypal|razorpay|cashfree|payu|ccavenue|adyen|braintree|paddle|chargebee|shopify payments|payoneer/i.test(t) ? 'pay' : 'plain'}">${esc(t)}</span>`).join('')}</div></div>` : ''}
+    <div class="tr-foot">From Sprouts for ${esc(l.domain)} · updated ${ago(s.fetchedAt)}${s.stale ? ' · <b>older than 30 days</b>' : ''} · ${sproutsNote(r.usage)}</div>`;
+  $('#spRefresh').onclick = () => runSprouts(l, true);
+}
+
+async function runSprouts(l, refresh) {
+  renderSprouts(l, null, 'loading');
+  try {
+    const r = await api(`/leads/${l.id}/sprouts/snapshot`, { method: 'POST', body: { refresh } });
+    renderDrawer(await api(`/leads/${l.id}`)); // headcount may have changed the recommended contact
+    toast(r.snapshot?.found ? 'Company profile ready' : 'Sprouts has no record for this company');
+  } catch (e) {
+    renderSprouts(l, null, { error: e.message });
+  }
 }
 
 // ---------- intel ----------
@@ -744,7 +822,7 @@ function renderFunnel(s) {
   ].map(([l, v, sub]) => `<div class="stage"><div class="l">${l}</div><div class="v">${Number(v).toLocaleString('en-IN')}</div><div class="muted small">${sub}</div></div>`).join('');
   const u = s.llm;
   $('#llmPanel').innerHTML = [
-    ['Provider', u.provider === 'none' ? 'Rules engine (add GEMINI_API_KEY)' : `${u.provider} · ${u.model}`],
+    ['Provider', u.provider === 'none' ? 'Rules engine (add GROQ_API_KEY or GEMINI_API_KEY)' : `${u.label || u.provider} · ${u.model}`],
     ['Calls today', `${u.calls} / ${u.cap}`],
     ['Tokens today', `${(u.tokens_in || 0).toLocaleString()} in · ${(u.tokens_out || 0).toLocaleString()} out`],
     ['Extraction mix', `${s.pipeline.via.llm || 0} LLM · ${s.pipeline.via.rules || 0} rules · ${s.pipeline.via.structured || 0} structured`],
@@ -867,7 +945,7 @@ function renderConfigForm(c, learned = {}) {
       <p class="hint">Team size decides who the engine suggests: founder/CTO for small teams, finance/payments owner for mid-size, CFO/treasury for large.</p>
       <div class="cfg-row"><span>Small team up to</span>${range('contacts.smallTeamMax', c.contacts.smallTeamMax, 5, 200, 5)}</div>
       <div class="cfg-row"><span>Mid-size up to</span>${range('contacts.midTeamMax', c.contacts.midTeamMax, 50, 2000, 50)}</div>
-      <div class="cfg-field"><label>Email lookup provider (needs its API key on the server)</label><select class="input" data-path="contacts.emailProvider">${['auto', 'apollo', 'hunter'].map((v) => `<option value="${v}" ${c.contacts.emailProvider === v ? 'selected' : ''}>${v === 'auto' ? 'Auto (whichever key is set)' : v[0].toUpperCase() + v.slice(1)}</option>`).join('')}</select></div>
+      <div class="cfg-field"><label>Email lookup provider (needs its API key on the server)</label><select class="input" data-path="contacts.emailProvider">${['auto', 'sprouts', 'apollo', 'hunter'].map((v) => `<option value="${v}" ${c.contacts.emailProvider === v ? 'selected' : ''}>${v === 'auto' ? 'Auto (whichever key is set)' : v[0].toUpperCase() + v.slice(1)}</option>`).join('')}</select></div>
       <div class="cfg-row"><span>Paid lookups per month</span>${range('contacts.monthlyLookupCap', c.contacts.monthlyLookupCap, 0, 1000, 10)}</div>
       <div class="cfg-row"><span>Auto-find email at score (0 = only on click)</span>${range('contacts.autoFindEmailMinScore', c.contacts.autoFindEmailMinScore, 0, 100, 5)}</div></div>`;
   $('#cfgRaw').value = JSON.stringify(c, null, 2);

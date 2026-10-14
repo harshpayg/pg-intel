@@ -253,3 +253,4 @@ kbd{font:600 10px/1 Inter,ui-sans-serif,system-ui;border:1px solid var(--line);b
 .tag.pay{background:var(--green-bg);color:var(--green);border-color:transparent;font-weight:600}
 .tr-foot{margin-top:14px;padding-top:10px;border-top:1px solid var(--line2);font-size:11.5px;color:var(--muted2)}
 @media(max-width:700px){.tr-tiles,.tr-skel{grid-template-columns:repeat(2,1fr)}.tr-preview,.tr-steps{grid-template-columns:1fr}.tr-geo-row{grid-template-columns:28px minmax(0,1fr) 70px 42px}.tr-geo-row .tr-geo-pct{display:none}.tr-kw-row{grid-template-columns:minmax(0,1fr) 50px 70px}.tr-kw-row span:nth-child(3){display:none}}
+.sp-facts{margin-bottom:4px}.sp-row{grid-template-columns:minmax(90px,170px) minmax(0,1fr) 54px}

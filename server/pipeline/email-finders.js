@@ -3,10 +3,13 @@ import { getConfig } from '../config.js';
 import { domainOf } from '../util/text.js';
 import { saveTeam } from './people.js';
 import { log } from '../bus.js';
+import { configured as sproutsConfigured, findLinkedIn, revealEmail } from './sprouts.js';
 
 // Verified work-email lookup through licensed providers. Only verified (or accept-all, marked "risky")
 // addresses are stored; we never guess patterns or probe mail servers ourselves.
+// Order matters for "auto": the first configured provider is used.
 const PROVIDERS = {
+  sprouts: { key: () => (sproutsConfigured() ? 'set' : null), label: 'Sprouts' },
   apollo: { key: () => process.env.APOLLO_API_KEY, label: 'Apollo' },
   hunter: { key: () => process.env.HUNTER_API_KEY, label: 'Hunter' },
 };
@@ -32,7 +35,7 @@ function countLookup() {
 
 function pickProvider() {
   const st = providerStatus();
-  if (!st.configured.length) throw new Error('No email provider configured. Add APOLLO_API_KEY or HUNTER_API_KEY.');
+  if (!st.configured.length) throw new Error('No email provider configured. Add Sprouts, APOLLO_API_KEY or HUNTER_API_KEY.');
   if (st.used >= st.cap) throw new Error(`Monthly lookup cap reached (${st.used}/${st.cap}). Raise it in Config.`);
   const want = st.preferred !== 'auto' && st.configured.find((p) => p.id === st.preferred);
   return (want || st.configured[0]).id;
@@ -89,6 +92,14 @@ async function hunter({ first, last, domain }) {
   };
 }
 
+// Sprouts reveals from a LinkedIn URL. If we do not have one, a one-record name search finds it first.
+async function sprouts({ contactId, companyId, linkedin, domain }) {
+  const url = linkedin || (await findLinkedIn(contactId)).linkedin;
+  if (!url) return { email: null, note: 'Sprouts has no LinkedIn profile for this person, so no email was revealed (no reveal credit used)' };
+  const r = await revealEmail({ contactId, companyId, linkedin: url, domain });
+  return { email: r.email, status: r.email ? 'verified' : null, note: r.email ? null : 'Sprouts found no work email for this profile', linkedin: url };
+}
+
 export async function findEmail(contactId) {
   const ct = q.get('SELECT * FROM contacts WHERE id = ?', contactId);
   if (!ct) throw new Error('Contact not found');
@@ -97,8 +108,10 @@ export async function findEmail(contactId) {
   const provider = pickProvider();
   const parts = ct.name.split(/\s+/);
   const args = { first: parts[0], last: parts[parts.length - 1], name: ct.name, company: c.name, domain: c.domain || domainOf(c.website) || J(c.enrichment, {})?.domain };
-  const r = provider === 'apollo' ? await apollo(args) : await hunter(args);
-  countLookup(); // only answered lookups count towards the cap
+  const r = provider === 'sprouts' ? await sprouts({ ...args, contactId: ct.id, companyId: c.id, linkedin: ct.linkedin })
+    : provider === 'apollo' ? await apollo(args) : await hunter(args);
+  // Only answered lookups count towards the cap; a Sprouts lookup that never reached the reveal step costs no reveal.
+  if (!(provider === 'sprouts' && !r.linkedin)) countLookup();
   q.run(`UPDATE contacts SET email = COALESCE(?, email), email_status = COALESCE(?, email_status), email_source = CASE WHEN ? IS NOT NULL THEN ? ELSE email_source END,
     email_checked_at = ?, linkedin = COALESCE(linkedin, ?), role = COALESCE(role, ?), updated_at = ? WHERE id = ?`,
     r.email, r.status, r.email, provider, nowIso(), r.linkedin, r.title, nowIso(), ct.id);

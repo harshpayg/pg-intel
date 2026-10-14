@@ -147,7 +147,7 @@ const STAGE_TEAM = {
   'Pre-Seed': [2, 15], Angel: [2, 15], Seed: [5, 40], 'Pre-Series A': [10, 50], 'Series A': [20, 120],
   'Pre-Series B': [40, 200], 'Series B': [60, 300], 'Series C': [150, 800], 'Series D': [300, 2000],
 };
-const SOURCE_RANK = { manual: 6, apollo: 5, yc: 5, website: 4, article: 3, news: 3, stage: 1 };
+const SOURCE_RANK = { manual: 6, apollo: 5, sprouts: 5, yc: 5, website: 4, article: 3, news: 3, stage: 1 };
 
 export function bandOf(team) {
   if (!team) return null;
@@ -398,7 +398,7 @@ export async function researchPeople(companyId, { siteHtml, siteUrl } = {}) {
     result.openRoles = await openRoles(siteHtml, siteUrl).catch(() => null);
   }
 
-  // 3. Extract people + headcount: Gemini when available, rules otherwise.
+  // 3. Extract people + headcount: the LLM when available, rules otherwise.
   let viaLlm = false;
   if (docs.length && llm.available()) {
     try {

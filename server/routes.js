@@ -14,6 +14,7 @@ import { sha1, fmtUsdM } from './util/text.js';
 import { hostCooldowns } from './util/http.js';
 import { targetPlan, contactsOf, saveContacts, suppressContact } from './pipeline/people.js';
 import { findEmail, providerStatus } from './pipeline/email-finders.js';
+import { companySnapshot, cachedSnapshot, findDecisionMakers, findLinkedIn, usage as sproutsUsage, SproutsError } from './pipeline/sprouts.js';
 import { fetchTraction, cachedTraction, usageToday, configured as tractionConfigured, ApiError as TractionError } from './pipeline/traction.js';
 
 export const api = express.Router();
@@ -211,6 +212,7 @@ api.get('/leads/:id', wrap((req, res) => {
     contacts: v._contacts.map((x) => contactView(x, v._primaryId)),
     inboxes: enr?.emails || [],
     emailProviders: providerStatus(),
+    sprouts: sproutsUsage(),
   });
 }));
 
@@ -290,6 +292,15 @@ api.post('/leads/:id/enrich', wrap(async (req, res) => {
   rescore(Number(req.params.id));
   res.json({ ok: true, enrichment: enr });
 }));
+
+// ---------- sprouts (on click only; every call is cached and capped) ----------
+const sproutsWrap = (fn) => wrap(async (req, res) => {
+  try { res.json(await fn(req)); } catch (e) { if (e instanceof SproutsError) return res.status(400).json({ error: e.message }); throw e; }
+});
+api.get('/leads/:id/sprouts', wrap((req, res) => res.json({ usage: sproutsUsage(), snapshot: cachedSnapshot(Number(req.params.id)) })));
+api.post('/leads/:id/sprouts/snapshot', sproutsWrap(async (req) => ({ snapshot: await companySnapshot(Number(req.params.id), { refresh: Boolean(req.body?.refresh) }), usage: sproutsUsage() })));
+api.post('/leads/:id/sprouts/people', sproutsWrap(async (req) => ({ ...(await findDecisionMakers(Number(req.params.id))), usage: sproutsUsage() })));
+api.post('/contacts/:id/linkedin', sproutsWrap(async (req) => ({ ...(await findLinkedIn(Number(req.params.id))), usage: sproutsUsage() })));
 
 // ---------- traction (DataForSEO) ----------
 api.get('/leads/:id/traction', wrap((req, res) => {
